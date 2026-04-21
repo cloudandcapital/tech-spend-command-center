@@ -1,0 +1,13 @@
+{
+  "report_type": "cost_overview_month",
+  "total_cost": 4821.50,
+  "daily_average": 155.53,
+  "trend": {"trend_direction": "up", "change_percentage": 8.2, "change_amount": 365.20},
+  "service_breakdown": [
+    {"service_name": "Amazon EC2", "total_cost": 2840.00, "percentage_of_total": 58.9},
+    {"service_name": "Amazon RDS", "total_cost": 980.00, "percentage_of_total": 20.3},
+    {"service_name": "Amazon S3", "total_cost": 320.00, "percentage_of_total": 6.6}
+  ],
+  "currency": "USD",
+  "window": {"label": "2026-03"}
+}

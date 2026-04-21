@@ -1,0 +1,7 @@
+{
+  "anomalies": [
+    {"service": "Amazon EC2", "severity": "high", "message": "Spend up 42% vs 7-day average"},
+    {"service": "Amazon RDS", "severity": "medium", "message": "New instance type detected"}
+  ],
+  "total_anomalies": 2
+}

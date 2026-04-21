@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "group_by": "model",
+  "total_cost": 892.40,
+  "rows": [
+    {"key": "gpt-4o", "cost": 512.30, "provider": "openai", "input_tokens": 4200000, "output_tokens": 1800000},
+    {"key": "claude-sonnet-4-6", "cost": 280.10, "provider": "anthropic", "input_tokens": 2100000, "output_tokens": 890000},
+    {"key": "amazon.nova-pro-v1:0", "cost": 100.00, "provider": "bedrock", "input_tokens": 800000, "output_tokens": 320000}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "scenario_name": "Production Workload",
+  "total_monthly_resilience_cost": 1240.00,
+  "cost_per_gb": 0.62,
+  "cost_per_backup": 31.00,
+  "currency": "USD"
+}
