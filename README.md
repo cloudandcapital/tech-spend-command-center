@@ -1,129 +1,92 @@
 # Tech Spend Command Center
 
-[![CI](https://github.com/dianuhs/tech-spend-command-center/actions/workflows/test.yml/badge.svg)](https://github.com/dianuhs/tech-spend-command-center/actions/workflows/test.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Multi-cloud](https://img.shields.io/badge/cloud-AWS%20%7C%20Azure%20%7C%20GCP-orange)](https://github.com/cloudandcapital/tech-spend-command-center)
+[![SaaS](https://img.shields.io/badge/SaaS-included-blueviolet)](https://github.com/cloudandcapital/tech-spend-command-center)
+[![AI for FinOps](https://img.shields.io/badge/AI-spend%20included-ff6b35)](https://github.com/cloudandcapital/tech-spend-command-center)
+[![FOCUS 2026](https://img.shields.io/badge/FOCUS-2026-brightgreen)](https://focus.finops.org)
 
-**The top of the FinOps pipeline stack.** Tech Spend Command Center reads outputs from all five pipeline tools and produces a single CFO-ready executive summary report covering Cloud, AI, and SaaS spend in one view.
+**Unified executive reporting across Cloud · AI · SaaS spend — Markdown, JSON, and HTML output.**
 
-| Stage | Tool | What it does |
-|-------|------|-------------|
-| **Visibility** | [FinOps Lite](https://github.com/dianuhs/finops-lite) | AWS/Azure/GCP cost visibility, FOCUS 1.0 export |
-| **Variance** | [FinOps Watchdog](https://github.com/dianuhs/finops-watchdog) | Anomaly detection from any cost CSV |
-| **Tradeoffs** | [Recovery Economics](https://github.com/dianuhs/recovery-economics) | Resilience cost modeling, scenario comparison |
-| **AI Spend** | [AI Cost Lens](https://github.com/dianuhs/ai-cost-lens) | OpenAI/Anthropic/Bedrock billing → FOCUS 1.0 |
-| **SaaS Spend** | [SaaS Cost Analyzer](https://github.com/dianuhs/saas-cost-analyzer) | SaaS billing → FOCUS 1.0, unused licenses, forecasting |
-| **Command Center** | [Tech Spend Command Center](https://github.com/dianuhs/tech-spend-command-center) | Unified Cloud+AI+SaaS executive summary report |
+Part of the [Cloud & Capital](https://github.com/cloudandcapital) FinOps pipeline.  
+The top of the stack — aggregates all pipeline outputs into a single CFO-ready summary.  
+Visualize everything in [Cloud Cost Guard](https://github.com/cloudandcapital/cloud-cost-guard) — the unified FinOps dashboard.
 
 ---
 
-## What It Does
+**Features:**
+- Reads output from all five pipeline tools (FinOps Lite, Watchdog, Recovery Economics, AI Cost Lens, SaaS Analyzer)
+- Produces a single unified report: Cloud + AI + SaaS + Kubernetes spend in one view
+- Output formats: Markdown (async sharing), JSON (API / dashboard feed), HTML (email-ready)
+- Period-over-period variance with anomaly highlighting
+- FOCUS 2026 aligned — cost categories match the FinOps Foundation taxonomy
 
-`techspend report` accepts JSON or CSV outputs from any of the five tools above (all inputs are optional — report on whatever you have) and produces a unified executive summary with:
-
-- **Spend Summary** — total spend by scope (Cloud / AI / SaaS) with period-over-period delta where available
-- **Top Anomalies** — up to 5 anomalies across all scopes (sourced from Watchdog and AI Cost Lens)
-- **Optimization Opportunities** — up to 3 actionable items (unused licenses, rightsizing, model tiering)
-- **Resilience Cost** — monthly resilience cost from Recovery Economics
-- **Forecast** — projected next-month total spend across all scopes
-- **Risk Flags** — any scope where spend increased >20% month-over-month
-
-Output formats: **markdown** (default), **json** (machine-readable, `schema_version: "1.0"`), or **html** (CFO-ready, inline CSS only, no external dependencies).
+---
 
 ## Install
 
 ```bash
-pip install -e .
+pip install "git+https://github.com/cloudandcapital/tech-spend-command-center.git"
 # or
-pipx install "git+https://github.com/dianuhs/tech-spend-command-center.git"
+pipx install .
 ```
 
-## Quickstart
+---
 
-### Full pipeline report (all five tools)
+## Usage
 
 ```bash
-techspend report \
-  --cloud    finops-lite-output.json \
-  --watchdog watchdog-output.json \
-  --resilience recovery-output.json \
-  --ai       ai-cost-lens-output.json \
-  --saas     saas-output.json \
-  --format   markdown
+# Generate unified Markdown executive summary
+tech-spend-command-center report --format markdown
+
+# JSON output (feeds Cloud Cost Guard report.json)
+tech-spend-command-center report --format json > report.json
+
+# HTML report (email-ready)
+tech-spend-command-center report --format html --output report.html
+
+# Include Kubernetes spend
+tech-spend-command-center report --include-k8s --format markdown
+
+# Pull from live pipeline outputs
+tech-spend-command-center report \
+  --cloud-json cost.json \
+  --anomalies-json anomalies.json \
+  --resilience-json resilience.json \
+  --ai-json ai_spend.json \
+  --saas-json saas_spend.json \
+  --format markdown
 ```
 
-### Cloud + AI only, JSON output
+---
 
-```bash
-techspend report \
-  --cloud  finops-lite-output.json \
-  --ai     ai-cost-lens-output.json \
-  --format json | jq '.sections.spend_summary'
-```
+## Report Sections
 
-### Write an HTML report to file
+| Section | Source tool |
+|---------|------------|
+| Cloud Infrastructure | FinOps Lite |
+| Cost Anomalies | FinOps Watchdog |
+| Resilience Cost | Recovery Economics |
+| AI / LLM Spend | AI Cost Lens |
+| SaaS Licenses | SaaS Cost Analyzer |
+| Kubernetes | K8s Connector (Cloud Cost Guard) |
 
-```bash
-techspend report \
-  --cloud  examples/cloud-input.json \
-  --ai     examples/ai-input.json \
-  --saas   examples/saas-input.json \
-  --format html \
-  --output report.html
-```
+---
 
-### Try the example inputs
+## Part of the Cloud & Capital Pipeline
 
-```bash
-techspend report \
-  --cloud       examples/cloud-input.json \
-  --watchdog    examples/watchdog-input.json \
-  --resilience  examples/resilience-input.json \
-  --ai          examples/ai-input.json \
-  --saas        examples/saas-input.json
-```
+| Tool | Role |
+|------|------|
+| [FinOps Lite](https://github.com/cloudandcapital/finops-lite) | Cost pull + FOCUS 2026 export |
+| [FinOps Watchdog](https://github.com/cloudandcapital/finops-watchdog) | Anomaly detection |
+| [Recovery Economics](https://github.com/cloudandcapital/recovery-economics) | Resilience cost modeling |
+| [AI Cost Lens](https://github.com/cloudandcapital/ai-cost-lens) | AI/LLM spend tracking |
+| [SaaS Cost Analyzer](https://github.com/cloudandcapital/saas-cost-analyzer) | SaaS license governance |
+| [Cloud Cost Guard](https://github.com/cloudandcapital/cloud-cost-guard) | Unified dashboard |
+| **Tech Spend Command Center** | Executive reporting — aggregates all of the above |
 
-See [`examples/sample-report.md`](examples/sample-report.md) for what this produces.
-
-## Command Reference
-
-```
-techspend report [OPTIONS]
-
-Options:
-  --cloud       PATH   Path to FinOps Lite JSON output
-  --watchdog    PATH   Path to FinOps Watchdog JSON output
-  --resilience  PATH   Path to Recovery Economics JSON or CSV output
-  --ai          PATH   Path to AI Cost Lens JSON output
-  --saas        PATH   Path to SaaS Cost Analyzer JSON output
-  --format      TEXT   markdown | json | html  [default: markdown]
-  --output      PATH   Write to file instead of stdout
-  --help               Show this message and exit.
-```
-
-## Input Formats
-
-| Flag | Tool | Format |
-|------|------|--------|
-| `--cloud` | FinOps Lite | JSON: `total_cost`, `service_breakdown`, `trend` |
-| `--watchdog` | FinOps Watchdog | JSON: `anomalies[]` with `service`, `severity`, `message` |
-| `--resilience` | Recovery Economics | JSON or CSV: `total_monthly_resilience_cost`, `scenario_name` |
-| `--ai` | AI Cost Lens | JSON: `total_cost`, `rows[]` with `key`, `cost`, `provider` |
-| `--saas` | SaaS Cost Analyzer | JSON: `total_cost`, `rows[]` with `key`, `cost` |
-
-All inputs are optional. If a field is missing, that section is skipped gracefully.
-
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Success |
-| `2` | Usage/validation error (no inputs provided, bad `--format`) |
-| `3` | File not found |
-| `5` | Internal error |
-
-## Examples
-
-See [`examples/`](examples/) for sample input files for all five tools and a pre-rendered [`sample-report.md`](examples/sample-report.md).
+---
 
 ## License
 
-MIT
+MIT © 2025 Diana Molski, Cloud & Capital
