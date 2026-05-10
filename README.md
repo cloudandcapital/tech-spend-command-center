@@ -1,17 +1,17 @@
 # Tech Spend Command Center
 
-[![CI](https://github.com/dianuhs/tech-spend-command-center/actions/workflows/test.yml/badge.svg)](https://github.com/dianuhs/tech-spend-command-center/actions/workflows/test.yml)
+[![CI](https://github.com/cloudandcapital/tech-spend-command-center/actions/workflows/test.yml/badge.svg)](https://github.com/cloudandcapital/tech-spend-command-center/actions/workflows/test.yml)
 
 **The top of the FinOps pipeline stack.** Tech Spend Command Center reads outputs from all five pipeline tools and produces a single CFO-ready executive summary report covering Cloud, AI, and SaaS spend in one view.
 
 | Stage | Tool | What it does |
 |-------|------|-------------|
-| **Visibility** | [FinOps Lite](https://github.com/dianuhs/finops-lite) | AWS/Azure/GCP cost visibility, FOCUS 1.0 export |
-| **Variance** | [FinOps Watchdog](https://github.com/dianuhs/finops-watchdog) | Anomaly detection from any cost CSV |
-| **Tradeoffs** | [Recovery Economics](https://github.com/dianuhs/recovery-economics) | Resilience cost modeling, scenario comparison |
-| **AI Spend** | [AI Cost Lens](https://github.com/dianuhs/ai-cost-lens) | OpenAI/Anthropic/Bedrock billing → FOCUS 1.0 |
-| **SaaS Spend** | [SaaS Cost Analyzer](https://github.com/dianuhs/saas-cost-analyzer) | SaaS billing → FOCUS 1.0, unused licenses, forecasting |
-| **Command Center** | [Tech Spend Command Center](https://github.com/dianuhs/tech-spend-command-center) | Unified Cloud+AI+SaaS executive summary report |
+| **Visibility** | [FinOps Lite](https://github.com/cloudandcapital/finops-lite) | AWS/Azure/GCP cost visibility, FOCUS 1.0 export |
+| **Variance** | [FinOps Watchdog](https://github.com/cloudandcapital/finops-watchdog) | Anomaly detection from any cost CSV |
+| **Tradeoffs** | [Recovery Economics](https://github.com/cloudandcapital/recovery-economics) | Resilience cost modeling, scenario comparison |
+| **AI Spend** | [AI Cost Lens](https://github.com/cloudandcapital/ai-cost-lens) | OpenAI/Anthropic/Bedrock billing → FOCUS 1.0 |
+| **SaaS Spend** | [SaaS Cost Analyzer](https://github.com/cloudandcapital/saas-cost-analyzer) | SaaS billing → FOCUS 1.0, unused licenses, forecasting |
+| **Command Center** | [Tech Spend Command Center](https://github.com/cloudandcapital/tech-spend-command-center) | Unified Cloud+AI+SaaS executive summary report |
 
 ---
 
@@ -33,7 +33,7 @@ Output formats: **markdown** (default), **json** (machine-readable, `schema_vers
 ```bash
 pip install -e .
 # or
-pipx install "git+https://github.com/dianuhs/tech-spend-command-center.git"
+pipx install "git+https://github.com/cloudandcapital/tech-spend-command-center.git"
 ```
 
 ## Quickstart
