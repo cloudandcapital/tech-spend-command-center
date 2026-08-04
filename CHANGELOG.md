@@ -17,6 +17,8 @@
 - Exclude invalid metrics from decision-ready display and fail closed when required cloud reconciliation metrics are invalid.
 - Reject executable mutation commands recursively in illustrative findings and opportunities without blocking ordinary explanatory prose.
 - Exclude every candidate in a repeated overlap group until a future canonical precedence mechanism exists.
+- Enforce typed, unique canonical reference arrays and structurally valid non-mutating review steps.
+- Detect repeated overlap groups globally across producers and periods, and prevent invalid metrics from re-entering display or aggregates through dependent findings and opportunities.
 
 All notable changes to Tech Spend Command Center are documented here.
 

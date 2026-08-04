@@ -24,7 +24,7 @@ See the [six-tool roadmap](ROADMAP.md) for the verified v0.2 boundary and the [c
 - Untagged or unattributed spend remains cost, never an opportunity.
 - Potential, nested, and exclusive opportunity overlaps are excluded from headline aggregates until resolved. Rejected, closed, and implemented-pending-verification opportunities are also excluded.
 - Independent and `none_known` opportunities may be aggregated, but remain estimates.
-- A repeated deterministic overlap group is excluded in full because v0.2 has no canonical winner-selection or precedence field. Every candidate remains visible and requires explicit resolution before any estimate can enter an aggregate.
+- A repeated deterministic overlap group anywhere in the complete opportunity catalog is excluded in full, including repetitions across producers or estimate periods, because v0.2 has no canonical winner-selection or precedence field. Every candidate remains visible and requires explicit resolution before any estimate can enter an aggregate.
 - Metrics with different periods or accounting boundaries are not forced into one total.
 - AI cost with possible cloud-billing overlap and modeled resilience exposure remain non-additive.
 - Public review steps must be non-mutating and every opportunity remains approval-, rollback-, and verification-gated.
@@ -124,6 +124,8 @@ techspend trusted-report \
 The aggregator rereads and hashes every artifact. Any later modification fails closed. It also rejects cross-producer ID collisions, incompatible currencies, invalid periods and classifications, broken evidence or metric references, unsupported producer versions, malformed estimates, and non-review-first opportunities. The complete FinOps Lite service breakdown must use matching periods and currencies, remain additive, and reconcile to `metric.cloud.total` within one cent.
 
 Metrics marked `quality_status=invalid` remain in the catalog only for audit. They are excluded from headlines and displayed sections and cannot be aggregation or reconciliation inputs or outputs. If the required cloud total or any cloud service reconciliation component is invalid, trusted-report construction fails closed.
+
+Findings that reference an invalid metric remain in the audit catalog but are excluded from display. Under the conservative v0.2 lineage rule, opportunities related to those findings remain cataloged but are excluded from aggregates. Canonical reference fields must be unique arrays of canonical IDs, and review steps must be nonempty arrays of nonempty, non-mutating instructions.
 
 Producer periods can describe different valid accounting windows. The report period is their union for navigation only; it is not a claim that the windows are comparable. The Command Center does not manufacture a unified technology-spend number from unlike periods, scopes, bases, or accounting boundaries.
 

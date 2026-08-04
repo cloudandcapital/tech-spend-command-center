@@ -54,7 +54,7 @@ COMMAND_MUTATION_PATTERNS = (
     re.compile(r"\b(?:POST|PUT|PATCH|DELETE)\s+https?://\S+", re.I),
 )
 REVIEW_MUTATION_INSTRUCTION = re.compile(
-    r"^\s*(?:[-*]\s*)?(?:please\s+)?(?:delete|terminate|stop|modify|update|create|apply|remove|destroy|cancel|revoke|resize|scale|replace|deallocate)\b",
+    r"(?:^|[,;:]\s*|\b(?:and\s+)?then\s+)(?:please\s+)?(?:delete|terminate|stop|modify|update|create|apply|remove|destroy|cancel|revoke|resize|scale|replace|deallocate)\b",
     re.I,
 )
 METRIC_BASES = {"observed", "calculated", "allocated", "estimated", "unknown"}
@@ -130,6 +130,34 @@ def _valid_id(value: Any) -> bool:
         and len(value) <= 160
         and bool(ID_PATTERN.fullmatch(value))
     )
+
+
+def _reference_ids(
+    value: Any, field: str, known_ids: set[str], *, nonempty: bool = False
+) -> list[str]:
+    if not isinstance(value, list):
+        raise TrustedReportError(f"{field} must be an array of canonical ids")
+    if nonempty and not value:
+        raise TrustedReportError(f"{field} must be a nonempty array of canonical ids")
+    if any(not _valid_id(item) for item in value):
+        raise TrustedReportError(f"{field} must contain only canonical ids")
+    if len(value) != len(set(value)):
+        raise TrustedReportError(f"{field} must not contain duplicate ids")
+    if not set(value).issubset(known_ids):
+        raise TrustedReportError(f"{field} contains unresolved references")
+    return value
+
+
+def _review_steps(value: Any, field: str) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(not isinstance(step, str) or not step.strip() for step in value)
+    ):
+        raise TrustedReportError(
+            f"{field} must be a nonempty array of nonempty strings"
+        )
+    return value
 
 
 def _producer(value: Any, field: str) -> dict[str, Any]:
@@ -252,12 +280,12 @@ def _validate_result(
     for evidence in document["evidence"]:
         if not evidence.get("description"):
             raise TrustedReportError(f"{evidence['id']} requires a description")
-        if not evidence.get("source_ids") or not set(
-            evidence.get("source_ids", [])
-        ).issubset(source_ids):
-            raise TrustedReportError(
-                f"{evidence['id']} has unresolved source references"
-            )
+        _reference_ids(
+            evidence.get("source_ids"),
+            f"{evidence['id']}.source_ids",
+            source_ids,
+            nonempty=True,
+        )
     for metric in document["metrics"]:
         value = metric.get("value")
         if value is not None and (
@@ -290,22 +318,30 @@ def _validate_result(
             metric.get("basis") != "unknown" or not metric.get("unknown_reason")
         ):
             raise TrustedReportError(f"{metric['id']} has an unexplained unknown value")
-        if not metric.get("evidence_ids") or not set(
-            metric.get("evidence_ids", [])
-        ).issubset(evidence_ids):
-            raise TrustedReportError(
-                f"{metric['id']} has unresolved evidence references"
-            )
-        if not set(metric.get("input_metric_ids", [])).issubset(metric_ids):
-            raise TrustedReportError(f"{metric['id']} has unresolved metric inputs")
+        _reference_ids(
+            metric.get("evidence_ids"),
+            f"{metric['id']}.evidence_ids",
+            evidence_ids,
+            nonempty=True,
+        )
+        _reference_ids(
+            metric.get("input_metric_ids"),
+            f"{metric['id']}.input_metric_ids",
+            metric_ids,
+        )
     for finding in document["findings"]:
-        if (
-            not finding.get("metric_ids")
-            or not finding.get("evidence_ids")
-            or not set(finding.get("metric_ids", [])).issubset(metric_ids)
-            or not set(finding.get("evidence_ids", [])).issubset(evidence_ids)
-        ):
-            raise TrustedReportError(f"{finding['id']} has unresolved references")
+        _reference_ids(
+            finding.get("metric_ids"),
+            f"{finding['id']}.metric_ids",
+            metric_ids,
+            nonempty=True,
+        )
+        _reference_ids(
+            finding.get("evidence_ids"),
+            f"{finding['id']}.evidence_ids",
+            evidence_ids,
+            nonempty=True,
+        )
         if mode == "illustrative" and _contains_mutating_command(finding):
             raise TrustedReportError(
                 f"{finding['id']} contains a mutating public command"
@@ -357,6 +393,12 @@ def _validate_result(
             raise TrustedReportError(
                 f"{opportunity['id']} overlap requires a deterministic group id"
             )
+        if overlap.get("group_id") is not None and not _valid_id(
+            overlap.get("group_id")
+        ):
+            raise TrustedReportError(
+                f"{opportunity['id']} overlap group_id must be a canonical CCAC id"
+            )
         if opportunity.get("scope", {}).get("classification") == "unattributed_cost":
             raise TrustedReportError(
                 f"{opportunity['id']} classifies unattributed cost as an opportunity"
@@ -372,56 +414,65 @@ def _validate_result(
             )
         ):
             raise TrustedReportError(f"{opportunity['id']} is not review-first")
-        if not review.get("non_mutating_review_steps"):
-            raise TrustedReportError(
-                f"{opportunity['id']} requires non-mutating review steps"
-            )
+        review_steps = _review_steps(
+            review.get("non_mutating_review_steps"),
+            f"{opportunity['id']}.review.non_mutating_review_steps",
+        )
         if any(
             REVIEW_MUTATION_INSTRUCTION.search(step) or _contains_mutating_command(step)
-            for step in review.get("non_mutating_review_steps", [])
+            for step in review_steps
         ):
             raise TrustedReportError(
                 f"{opportunity['id']} contains a mutating public review step"
             )
-        if (
-            not opportunity.get("evidence_ids")
-            or not set(opportunity.get("evidence_ids", [])).issubset(evidence_ids)
-            or not set(opportunity.get("related_finding_ids", [])).issubset(finding_ids)
-            or not set(opportunity.get("related_opportunity_ids", [])).issubset(
-                opportunity_ids
-            )
-        ):
-            raise TrustedReportError(f"{opportunity['id']} has unresolved references")
+        _reference_ids(
+            opportunity.get("evidence_ids"),
+            f"{opportunity['id']}.evidence_ids",
+            evidence_ids,
+            nonempty=True,
+        )
+        _reference_ids(
+            opportunity.get("related_finding_ids"),
+            f"{opportunity['id']}.related_finding_ids",
+            finding_ids,
+        )
+        _reference_ids(
+            opportunity.get("related_opportunity_ids"),
+            f"{opportunity['id']}.related_opportunity_ids",
+            opportunity_ids,
+        )
         if mode == "illustrative" and _contains_mutating_command(opportunity):
             raise TrustedReportError(
                 f"{opportunity['id']} contains a mutating public command"
             )
 
 
-def _select_opportunities(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _select_opportunities(
+    opportunities: list[dict[str, Any]], *, trust_excluded_ids: set[str]
+) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    eligible_group_counts: dict[str, int] = defaultdict(int)
     for item in opportunities:
         estimate = item["estimate"]
         grouped[(estimate["period"], estimate["currency"])].append(item)
+        disposition = item.get("overlap", {}).get("disposition")
+        group_id = item.get("overlap", {}).get("group_id")
+        if (
+            disposition in {"independent", "none_known"}
+            and item.get("status") in INCLUDED_OPPORTUNITY_STATUSES
+            and group_id
+        ):
+            eligible_group_counts[group_id] += 1
     aggregates = []
     for (period_name, currency), candidates in sorted(grouped.items()):
         included, excluded = [], []
-        eligible_group_counts: dict[str, int] = defaultdict(int)
-        for item in candidates:
-            disposition = item.get("overlap", {}).get("disposition")
-            group_id = item.get("overlap", {}).get("group_id")
-            if (
-                disposition in {"independent", "none_known"}
-                and item.get("status") in INCLUDED_OPPORTUNITY_STATUSES
-                and group_id
-            ):
-                eligible_group_counts[group_id] += 1
         for item in sorted(candidates, key=lambda row: row["id"]):
             disposition = item.get("overlap", {}).get("disposition")
             group_id = item.get("overlap", {}).get("group_id")
             if (
                 disposition in {"independent", "none_known"}
                 and item.get("status") in INCLUDED_OPPORTUNITY_STATUSES
+                and item["id"] not in trust_excluded_ids
                 and (not group_id or eligible_group_counts[group_id] == 1)
             ):
                 included.append(item)
@@ -440,7 +491,7 @@ def _select_opportunities(opportunities: list[dict[str, Any]]) -> list[dict[str,
                 ),
                 "high": round(sum(item["estimate"]["high"] for item in included), 2),
                 "currency": currency,
-                "inclusion_rule": "Include only identified, under-review, or approved opportunities with independent or none-known overlap disposition whose deterministic overlap group appears exactly once. Exclude every candidate in repeated groups because v0.2 has no canonical selection or precedence mechanism; also exclude rejected, closed, implemented-pending-verification, potential, nested, and exclusive entries. All candidates remain cataloged and estimates are not verified savings.",
+                "inclusion_rule": "Include only identified, under-review, or approved opportunities with independent or none-known overlap disposition whose deterministic overlap group appears exactly once across the complete opportunity catalog. Exclude every candidate in repeated groups because v0.2 has no canonical selection or precedence mechanism, and exclude opportunities related to invalid-metric findings; also exclude rejected, closed, implemented-pending-verification, potential, nested, and exclusive entries. All candidates remain cataloged and estimates are not verified savings.",
             }
         )
     return aggregates
@@ -711,7 +762,24 @@ def build_trusted_report(
         disclosures.append(
             "Invalid producer metrics remain in the catalog for audit only and are excluded from headlines, displayed sections, aggregates, and reconciliation."
         )
-    aggregates = _select_opportunities(opportunities)
+    invalid_metric_ids = set(metric_map) - set(valid_metric_map)
+    invalid_metric_finding_ids = {
+        item["id"]
+        for item in findings
+        if set(item["metric_ids"]).intersection(invalid_metric_ids)
+    }
+    invalid_lineage_opportunity_ids = {
+        item["id"]
+        for item in opportunities
+        if set(item["related_finding_ids"]).intersection(invalid_metric_finding_ids)
+    }
+    if invalid_metric_finding_ids or invalid_lineage_opportunity_ids:
+        disclosures.append(
+            "Findings that reference invalid metrics remain audit-only and are excluded from display; related opportunities are excluded from aggregates under the conservative v0.2 lineage rule."
+        )
+    aggregates = _select_opportunities(
+        opportunities, trust_excluded_ids=invalid_lineage_opportunity_ids
+    )
     producer_quality = [
         {"producer": results[name]["producer"], "quality": results[name]["quality"]}
         for name in ANALYTICAL_PRODUCERS
@@ -744,7 +812,11 @@ def build_trusted_report(
             "finding_ids": [
                 item["id"]
                 for item in sorted(
-                    findings,
+                    (
+                        item
+                        for item in findings
+                        if item["id"] not in invalid_metric_finding_ids
+                    ),
                     key=lambda row: {
                         "critical": 0,
                         "high": 1,

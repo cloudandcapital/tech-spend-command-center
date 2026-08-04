@@ -348,6 +348,64 @@ def test_repeated_overlap_group_excludes_every_candidate(tmp_path: Path):
     assert "no canonical selection or precedence" in aggregate["inclusion_rule"]
 
 
+def test_repeated_overlap_group_is_global_across_periods(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            annual = _opportunity("opportunity.saas.annual", value["producer"])
+            monthly = _opportunity("opportunity.saas.monthly", value["producer"])
+            monthly["estimate"]["period"] = "monthly"
+            value["opportunities"] = [annual, monthly]
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    assert all(
+        aggregate["opportunity_ids"] == [] and aggregate["excluded_opportunity_ids"]
+        for aggregate in report["opportunity_aggregates"]
+    )
+
+
+def test_repeated_overlap_group_is_global_across_producers(tmp_path: Path):
+    def mutate(producer, value):
+        if producer in {"recovery-economics", "saas-cost-analyzer"}:
+            opportunity = _opportunity(
+                f"opportunity.{producer}.test", value["producer"]
+            )
+            opportunity["evidence_ids"] = [f"evidence.{producer}.test"]
+            value["opportunities"] = [opportunity]
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    aggregate = report["opportunity_aggregates"][0]
+    assert aggregate["opportunity_ids"] == []
+    assert len(aggregate["excluded_opportunity_ids"]) == 2
+
+
+def test_unique_and_groupless_none_known_opportunities_remain_eligible(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            unique = _opportunity("opportunity.saas.unique", value["producer"])
+            groupless = _opportunity("opportunity.saas.groupless", value["producer"])
+            groupless["overlap"]["group_id"] = None
+            value["opportunities"] = [unique, groupless]
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    aggregate = report["opportunity_aggregates"][0]
+    assert aggregate["opportunity_ids"] == [
+        "opportunity.saas.groupless",
+        "opportunity.saas.unique",
+    ]
+    assert aggregate["expected"] == 200
+
+
+def test_overlap_group_id_must_be_canonical(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            opportunity = _opportunity("opportunity.saas.bad-group", value["producer"])
+            opportunity["overlap"]["group_id"] = "Bad group"
+            value["opportunities"] = [opportunity]
+
+    with pytest.raises(TrustedReportError, match="group_id must be a canonical"):
+        _write_run(tmp_path, mutate)
+
+
 def test_mutating_public_review_step_is_rejected(tmp_path: Path):
     def mutate(producer, value):
         if producer != "saas-cost-analyzer":
@@ -401,6 +459,51 @@ def test_cloud_command_in_review_step_is_rejected(tmp_path: Path):
             opportunity["review"]["non_mutating_review_steps"] = [
                 "aws ec2 stop-instances --instance-ids i-123"
             ]
+            value["opportunities"] = [opportunity]
+
+    with pytest.raises(TrustedReportError, match="mutating public review step"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        "Delete the license.",
+        {"step": "Inspect"},
+        [["Inspect"]],
+        None,
+        [],
+        [""],
+        ["   "],
+        [1],
+    ],
+)
+def test_review_steps_require_nonempty_array_of_nonempty_strings(tmp_path: Path, steps):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            opportunity = _opportunity("opportunity.saas.steps", value["producer"])
+            opportunity["review"]["non_mutating_review_steps"] = steps
+            value["opportunities"] = [opportunity]
+
+    with pytest.raises(TrustedReportError, match="nonempty array of nonempty strings"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "After reviewing the roster, delete the license.",
+        "Confirm the owner, then revoke the seat.",
+        "Review the deployment and then scale it to zero.",
+    ],
+)
+def test_review_step_detects_mutation_after_introductory_language(
+    tmp_path: Path, step: str
+):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            opportunity = _opportunity("opportunity.saas.steps", value["producer"])
+            opportunity["review"]["non_mutating_review_steps"] = [step]
             value["opportunities"] = [opportunity]
 
     with pytest.raises(TrustedReportError, match="mutating public review step"):
@@ -686,14 +789,14 @@ def test_broken_source_and_metric_lineage_fail_closed(tmp_path: Path):
         if producer == "ai-cost-lens":
             value["evidence"][0]["source_ids"] = ["source.missing"]
 
-    with pytest.raises(TrustedReportError, match="unresolved source references"):
+    with pytest.raises(TrustedReportError, match="unresolved references"):
         _write_run(tmp_path / "source", broken_source)
 
     def broken_metric(producer, value):
         if producer == "ai-cost-lens":
             value["metrics"][0]["input_metric_ids"] = ["metric.missing"]
 
-    with pytest.raises(TrustedReportError, match="unresolved metric inputs"):
+    with pytest.raises(TrustedReportError, match="unresolved references"):
         _write_run(tmp_path / "metric", broken_metric)
 
 
@@ -708,8 +811,128 @@ def test_evidence_requires_at_least_one_source_reference(
             else:
                 value["evidence"][0]["source_ids"] = source_ids
 
-    with pytest.raises(TrustedReportError, match="unresolved source references"):
+    with pytest.raises(TrustedReportError, match="array of canonical ids"):
         _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "reference_field",
+    [
+        "evidence.source_ids",
+        "metric.evidence_ids",
+        "metric.input_metric_ids",
+        "finding.metric_ids",
+        "finding.evidence_ids",
+        "opportunity.evidence_ids",
+        "opportunity.related_finding_ids",
+        "opportunity.related_opportunity_ids",
+    ],
+)
+def test_reference_fields_reject_scalar_strings_that_match_existing_ids(
+    tmp_path: Path, reference_field: str
+):
+    def mutate(producer, value):
+        if producer != "saas-cost-analyzer":
+            return
+        finding = {
+            **_finding("finding.saas.test", "Review the supplied evidence."),
+            "metric_ids": ["metric.saas.crm.invoice-cost"],
+            "evidence_ids": ["evidence.saas-cost-analyzer.test"],
+        }
+        first = _opportunity("opportunity.saas.first", value["producer"])
+        second = _opportunity("opportunity.saas.second", value["producer"])
+        first["related_finding_ids"] = ["finding.saas.test"]
+        first["related_opportunity_ids"] = ["opportunity.saas.second"]
+        value["findings"] = [finding]
+        value["opportunities"] = [first, second]
+        targets = {
+            "evidence.source_ids": (
+                value["evidence"][0],
+                "source_ids",
+                "source.saas-cost-analyzer.test",
+            ),
+            "metric.evidence_ids": (
+                value["metrics"][0],
+                "evidence_ids",
+                "evidence.saas-cost-analyzer.test",
+            ),
+            "metric.input_metric_ids": (
+                value["metrics"][0],
+                "input_metric_ids",
+                "metric.saas.crm.invoice-cost",
+            ),
+            "finding.metric_ids": (
+                finding,
+                "metric_ids",
+                "metric.saas.crm.invoice-cost",
+            ),
+            "finding.evidence_ids": (
+                finding,
+                "evidence_ids",
+                "evidence.saas-cost-analyzer.test",
+            ),
+            "opportunity.evidence_ids": (
+                first,
+                "evidence_ids",
+                "evidence.saas-cost-analyzer.test",
+            ),
+            "opportunity.related_finding_ids": (
+                first,
+                "related_finding_ids",
+                "finding.saas.test",
+            ),
+            "opportunity.related_opportunity_ids": (
+                first,
+                "related_opportunity_ids",
+                "opportunity.saas.second",
+            ),
+        }
+        target, key, scalar = targets[reference_field]
+        target[key] = scalar
+
+    with pytest.raises(TrustedReportError, match="array of canonical ids"):
+        _write_run(tmp_path, mutate)
+
+
+def test_reference_fields_reject_duplicate_ids(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "ai-cost-lens":
+            evidence_id = "evidence.ai-cost-lens.test"
+            value["metrics"][0]["evidence_ids"] = [evidence_id, evidence_id]
+
+    with pytest.raises(TrustedReportError, match="duplicate ids"):
+        _write_run(tmp_path, mutate)
+
+
+def test_invalid_metric_cannot_reenter_display_or_aggregates_through_lineage(
+    tmp_path: Path,
+):
+    def mutate(producer, value):
+        if producer == "ai-cost-lens":
+            value["metrics"][0]["quality_status"] = "invalid"
+            finding = {
+                **_finding("finding.ai.invalid", "Review invalid AI data."),
+                "metric_ids": ["metric.ai.total-cost"],
+                "evidence_ids": ["evidence.ai-cost-lens.test"],
+            }
+            opportunity = _opportunity("opportunity.ai.invalid", value["producer"])
+            opportunity["evidence_ids"] = ["evidence.ai-cost-lens.test"]
+            opportunity["related_finding_ids"] = ["finding.ai.invalid"]
+            value["findings"] = [finding]
+            value["opportunities"] = [opportunity]
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    assert "finding.ai.invalid" not in report["display"]["finding_ids"]
+    assert any(
+        finding["id"] == "finding.ai.invalid" for finding in report["finding_catalog"]
+    )
+    aggregate = report["opportunity_aggregates"][0]
+    assert "opportunity.ai.invalid" not in aggregate["opportunity_ids"]
+    assert "opportunity.ai.invalid" in aggregate["excluded_opportunity_ids"]
+    assert any(
+        "invalid metrics remain audit-only" in disclosure
+        for disclosure in report["display"]["disclosures"]
+    )
 
 
 def test_cross_producer_evidence_ids_are_rejected(tmp_path: Path):
