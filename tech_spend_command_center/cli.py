@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
 
 import click
 
-from .parsers.inputs import parse_ai, parse_cloud, parse_resilience, parse_saas, parse_watchdog
+from .demo import DEMO_GENERATED_AT, DEMO_RUN_ID, run_demo_pipeline
+from .manifest import build_manifest
+from .parsers.inputs import (
+    parse_ai,
+    parse_cloud,
+    parse_resilience,
+    parse_saas,
+    parse_watchdog,
+)
 from .report.builder import build_report
 from .report.renderers import render_html, render_json, render_markdown
+from .trusted import TrustedReportError, build_trusted_report
 
 EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 2
@@ -25,8 +35,167 @@ class InputFileError(Exception):
 
 
 @click.group()
+@click.version_option(package_name="tech-spend-command-center")
 def cli() -> None:
     """Tech Spend Command Center — unified Cloud + AI + SaaS executive summary."""
+
+
+@cli.command("demo-pipeline")
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    required=True,
+    help="New directory to publish only after the full demo validates.",
+)
+@click.option("--run-id", default=DEMO_RUN_ID, show_default=True)
+@click.option("--generated-at", default=DEMO_GENERATED_AT, show_default=True)
+@click.pass_context
+def demo_pipeline(
+    ctx: click.Context, output_dir: Path, run_id: str, generated_at: str
+) -> None:
+    """Run all five installed illustrative producers and build report.json atomically."""
+    try:
+        report = run_demo_pipeline(output_dir, run_id=run_id, generated_at=generated_at)
+        opportunity_count = len(report["opportunity_catalog"])
+        click.echo(f"Demo pipeline complete: {output_dir.resolve()}")
+        click.echo(
+            f"Validated {len(report['included_producers'])} producers, {len(report['metric_catalog'])} metrics, {len(report['finding_catalog'])} findings, and {opportunity_count} {'opportunity' if opportunity_count == 1 else 'opportunities'}."
+        )
+        click.echo(f"Trusted report: {(output_dir.resolve() / 'report.json')}")
+    except TrustedReportError as exc:
+        click.echo(f"Demo pipeline failed: {exc}", err=True)
+        ctx.exit(4)
+
+
+@cli.command("manifest")
+@click.option(
+    "--finops-lite",
+    "finops_lite",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+)
+@click.option(
+    "--finops-watchdog",
+    "finops_watchdog",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+)
+@click.option(
+    "--recovery-economics",
+    "recovery_economics",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+)
+@click.option(
+    "--ai-cost-lens",
+    "ai_cost_lens",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+)
+@click.option(
+    "--saas-cost-analyzer",
+    "saas_cost_analyzer",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+)
+@click.option("--started-at", required=True, help="RFC3339 pipeline start timestamp.")
+@click.option(
+    "--completed-at", required=True, help="RFC3339 pipeline completion timestamp."
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+)
+@click.pass_context
+def manifest(
+    ctx: click.Context,
+    finops_lite: Path,
+    finops_watchdog: Path,
+    recovery_economics: Path,
+    ai_cost_lens: Path,
+    saas_cost_analyzer: Path,
+    started_at: str,
+    completed_at: str,
+    output_path: Path,
+) -> None:
+    """Hash five same-run tool results and write a pipeline manifest."""
+    try:
+        paths = {
+            "finops-lite": finops_lite,
+            "finops-watchdog": finops_watchdog,
+            "recovery-economics": recovery_economics,
+            "ai-cost-lens": ai_cost_lens,
+            "saas-cost-analyzer": saas_cost_analyzer,
+        }
+        content = (
+            json.dumps(
+                build_manifest(
+                    paths,
+                    manifest_path=output_path,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                ),
+                indent=2,
+            )
+            + "\n"
+        )
+        output_path.write_text(content, encoding="utf-8")
+    except TrustedReportError as exc:
+        click.echo(f"Manifest validation failed: {exc}", err=True)
+        ctx.exit(4)
+    except OSError as exc:
+        click.echo(f"File error: {exc}", err=True)
+        ctx.exit(EXIT_FILE_NOT_FOUND)
+
+
+@cli.command("trusted-report")
+@click.option(
+    "--manifest",
+    "manifest_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+    help="CCAC 1.0 pipeline manifest whose paths are resolved relative to the manifest.",
+)
+@click.option("--generated-at", default=None, help="Optional RFC3339 report timestamp.")
+@click.option("--report-id", default="report.tech-spend.trusted", show_default=True)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=None,
+    help="Write trusted_report JSON; default is stdout.",
+)
+@click.pass_context
+def trusted_report(
+    ctx: click.Context,
+    manifest_path: Path,
+    generated_at: str | None,
+    report_id: str,
+    output_path: Path | None,
+) -> None:
+    """Validate five canonical producer artifacts and emit one trusted_report."""
+    try:
+        content = (
+            json.dumps(
+                build_trusted_report(
+                    manifest_path, generated_at=generated_at, report_id=report_id
+                ),
+                indent=2,
+            )
+            + "\n"
+        )
+        if output_path is None:
+            click.echo(content, nl=False)
+        else:
+            output_path.write_text(content, encoding="utf-8")
+    except TrustedReportError as exc:
+        click.echo(f"Trust validation failed: {exc}", err=True)
+        ctx.exit(4)
+    except OSError as exc:
+        click.echo(f"File error: {exc}", err=True)
+        ctx.exit(EXIT_FILE_NOT_FOUND)
 
 
 @cli.command("report")

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tech-spend-command-center"
-version = "0.1.0"
-description = "Unified Cloud + AI + SaaS executive spend summary CLI across the FinOps pipeline"
+version = "0.2.0"
+description = "Manifest-controlled CCAC trusted-report aggregation for the Cloud & Capital pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -25,13 +25,28 @@ dependencies = [
     "click>=8.1.7",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black>=26,<27",
+    "flake8>=7,<8",
+    "isort>=6,<7",
+    "pip-audit>=2.10,<3",
+    "pytest>=8,<9",
+]
+
 [project.scripts]
 techspend = "tech_spend_command_center.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/dianuhs/tech-spend-command-center"
-Repository = "https://github.com/dianuhs/tech-spend-command-center.git"
-"Bug Tracker" = "https://github.com/dianuhs/tech-spend-command-center/issues"
+Homepage = "https://github.com/cloudandcapital/tech-spend-command-center"
+Repository = "https://github.com/cloudandcapital/tech-spend-command-center.git"
+"Bug Tracker" = "https://github.com/cloudandcapital/tech-spend-command-center/issues"
 
 [tool.hatch.version]
 path = "tech_spend_command_center/__init__.py"
+
+[tool.black]
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
