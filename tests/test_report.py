@@ -17,8 +17,11 @@ from tech_spend_command_center.parsers.inputs import (
     parse_watchdog,
 )
 from tech_spend_command_center.report.builder import build_report
-from tech_spend_command_center.report.renderers import render_html, render_json, render_markdown
-
+from tech_spend_command_center.report.renderers import (
+    render_html,
+    render_json,
+    render_markdown,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -35,9 +38,17 @@ def _write_json(tmp_path: Path, name: str, data: dict) -> Path:
 
 CLOUD_DATA = {
     "total_cost": 4821.50,
-    "trend": {"trend_direction": "up", "change_percentage": 8.2, "change_amount": 365.20},
+    "trend": {
+        "trend_direction": "up",
+        "change_percentage": 8.2,
+        "change_amount": 365.20,
+    },
     "service_breakdown": [
-        {"service_name": "Amazon EC2", "total_cost": 2840.00, "percentage_of_total": 58.9}
+        {
+            "service_name": "Amazon EC2",
+            "total_cost": 2840.00,
+            "percentage_of_total": 58.9,
+        }
     ],
     "currency": "USD",
     "window": {"label": "2026-03"},
@@ -110,6 +121,7 @@ def saas_file(tmp_path):
 # 1. Parse cloud JSON → correct total_cost, trend extracted
 # ---------------------------------------------------------------------------
 
+
 def test_parse_cloud_total_cost(cloud_file):
     data = parse_cloud(cloud_file)
     assert data.total_cost == pytest.approx(4821.50)
@@ -126,6 +138,7 @@ def test_parse_cloud_trend(cloud_file):
 # 2. Parse watchdog JSON → anomalies list populated
 # ---------------------------------------------------------------------------
 
+
 def test_parse_watchdog_anomalies(watchdog_file):
     data = parse_watchdog(watchdog_file)
     assert len(data.anomalies) == 2
@@ -137,6 +150,7 @@ def test_parse_watchdog_anomalies(watchdog_file):
 # 3. Parse resilience JSON → resilience_cost extracted
 # ---------------------------------------------------------------------------
 
+
 def test_parse_resilience_cost(resilience_file):
     data = parse_resilience(resilience_file)
     assert data.total_monthly_resilience_cost == pytest.approx(1240.00)
@@ -146,6 +160,7 @@ def test_parse_resilience_cost(resilience_file):
 # ---------------------------------------------------------------------------
 # 4. Parse AI JSON → ai_cost extracted
 # ---------------------------------------------------------------------------
+
 
 def test_parse_ai_cost(ai_file):
     data = parse_ai(ai_file)
@@ -159,6 +174,7 @@ def test_parse_ai_cost(ai_file):
 # 5. Parse SaaS JSON → saas_cost extracted
 # ---------------------------------------------------------------------------
 
+
 def test_parse_saas_cost(saas_file):
     data = parse_saas(saas_file)
     assert data.total_cost == pytest.approx(1580.00)
@@ -167,24 +183,58 @@ def test_parse_saas_cost(saas_file):
 
 
 # ---------------------------------------------------------------------------
-# 6. ReportData.total_spend sums across all scopes
+# 6. Legacy scope values remain separate without compatible accounting boundaries
 # ---------------------------------------------------------------------------
 
-def test_report_total_spend(cloud_file, ai_file, saas_file):
+
+def test_report_does_not_manufacture_unified_spend_total(
+    cloud_file, ai_file, saas_file
+):
     cloud = parse_cloud(cloud_file)
     ai = parse_ai(ai_file)
     saas = parse_saas(saas_file)
     report = build_report(cloud=cloud, ai=ai, saas=saas)
-    expected = 4821.50 + 892.40 + 1580.00
-    assert report.total_spend == pytest.approx(expected)
+    assert report.total_spend is None
+    rendered = json.loads(render_json(report))
+    summary = rendered["sections"]["spend_summary"]
+    assert summary["total_spend"] is None
+    assert summary["total_status"] == (
+        "not_calculated_incompatible_accounting_boundaries"
+    )
+    assert [row["current"] for row in summary["scopes"]] == [4821.5, 892.4, 1580.0]
+
+
+def test_legacy_report_does_not_invent_opportunities_anomalies_or_forecast(
+    cloud_file, ai_file, saas_file
+):
+    report = build_report(
+        cloud=parse_cloud(cloud_file), ai=parse_ai(ai_file), saas=parse_saas(saas_file)
+    )
+    assert report.optimization_items == []
+    assert report.anomalies == []
+    assert report.forecast_next_month is None
+
+
+def test_legacy_malformed_money_fails_instead_of_becoming_zero(tmp_path):
+    f = _write_json(tmp_path, "bad.json", {"total_cost": "not-money"})
+    with pytest.raises(ValueError, match="numeric"):
+        parse_cloud(f)
 
 
 # ---------------------------------------------------------------------------
 # 7. Risk flag triggered when change_percentage > 20
 # ---------------------------------------------------------------------------
 
+
 def test_risk_flag_triggered(tmp_path):
-    data = {**CLOUD_DATA, "trend": {"trend_direction": "up", "change_percentage": 25.0, "change_amount": 1000.0}}
+    data = {
+        **CLOUD_DATA,
+        "trend": {
+            "trend_direction": "up",
+            "change_percentage": 25.0,
+            "change_amount": 1000.0,
+        },
+    }
     f = _write_json(tmp_path, "cloud_risk.json", data)
     cloud = parse_cloud(f)
     report = build_report(cloud=cloud)
@@ -197,8 +247,16 @@ def test_risk_flag_triggered(tmp_path):
 # 8. Risk flag NOT triggered when change_percentage <= 20
 # ---------------------------------------------------------------------------
 
+
 def test_risk_flag_not_triggered(tmp_path):
-    data = {**CLOUD_DATA, "trend": {"trend_direction": "up", "change_percentage": 15.0, "change_amount": 600.0}}
+    data = {
+        **CLOUD_DATA,
+        "trend": {
+            "trend_direction": "up",
+            "change_percentage": 15.0,
+            "change_amount": 600.0,
+        },
+    }
     f = _write_json(tmp_path, "cloud_ok.json", data)
     cloud = parse_cloud(f)
     report = build_report(cloud=cloud)
@@ -206,7 +264,14 @@ def test_risk_flag_not_triggered(tmp_path):
 
 
 def test_risk_flag_exactly_20_not_triggered(tmp_path):
-    data = {**CLOUD_DATA, "trend": {"trend_direction": "up", "change_percentage": 20.0, "change_amount": 800.0}}
+    data = {
+        **CLOUD_DATA,
+        "trend": {
+            "trend_direction": "up",
+            "change_percentage": 20.0,
+            "change_amount": 800.0,
+        },
+    }
     f = _write_json(tmp_path, "cloud_border.json", data)
     cloud = parse_cloud(f)
     report = build_report(cloud=cloud)
@@ -216,6 +281,7 @@ def test_risk_flag_exactly_20_not_triggered(tmp_path):
 # ---------------------------------------------------------------------------
 # 9. Markdown renderer produces "Spend Summary" header
 # ---------------------------------------------------------------------------
+
 
 def test_markdown_has_spend_summary_header(cloud_file):
     cloud = parse_cloud(cloud_file)
@@ -227,6 +293,7 @@ def test_markdown_has_spend_summary_header(cloud_file):
 # ---------------------------------------------------------------------------
 # 10. Markdown renderer includes all scope names that have data
 # ---------------------------------------------------------------------------
+
 
 def test_markdown_includes_all_scopes(cloud_file, ai_file, saas_file):
     cloud = parse_cloud(cloud_file)
@@ -242,6 +309,7 @@ def test_markdown_includes_all_scopes(cloud_file, ai_file, saas_file):
 # ---------------------------------------------------------------------------
 # 11. JSON renderer output has schema_version: "1.0"
 # ---------------------------------------------------------------------------
+
 
 def test_json_renderer_schema_version(cloud_file):
     cloud = parse_cloud(cloud_file)
@@ -267,6 +335,7 @@ def test_json_renderer_structure(cloud_file, ai_file):
 # 12. HTML renderer produces valid HTML with <html> tag
 # ---------------------------------------------------------------------------
 
+
 def test_html_renderer_has_html_tag(cloud_file):
     cloud = parse_cloud(cloud_file)
     report = build_report(cloud=cloud)
@@ -289,14 +358,22 @@ def test_html_renderer_has_spend_table(cloud_file, saas_file):
 # 13. CLI exits 2 when no inputs provided
 # ---------------------------------------------------------------------------
 
+
 def test_cli_exits_2_no_inputs(runner):
     result = runner.invoke(cli, ["report"])
     assert result.exit_code == 2
 
 
+def test_cli_version_is_available_to_fresh_users(runner):
+    result = runner.invoke(cli, ["--version"])
+    assert result.exit_code == 0
+    assert "0.2.0" in result.output
+
+
 # ---------------------------------------------------------------------------
 # 14. CLI exits 0 with valid input
 # ---------------------------------------------------------------------------
+
 
 def test_cli_exits_0_with_valid_input(runner, cloud_file):
     result = runner.invoke(cli, ["report", "--cloud", str(cloud_file)])
@@ -305,7 +382,9 @@ def test_cli_exits_0_with_valid_input(runner, cloud_file):
 
 
 def test_cli_exits_0_json_format(runner, cloud_file):
-    result = runner.invoke(cli, ["report", "--cloud", str(cloud_file), "--format", "json"])
+    result = runner.invoke(
+        cli, ["report", "--cloud", str(cloud_file), "--format", "json"]
+    )
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["schema_version"] == "1.0"
@@ -315,9 +394,12 @@ def test_cli_exits_0_json_format(runner, cloud_file):
 # 15. --output flag writes to file instead of stdout
 # ---------------------------------------------------------------------------
 
+
 def test_cli_output_flag_writes_file(runner, cloud_file, tmp_path):
     out_file = tmp_path / "report.md"
-    result = runner.invoke(cli, ["report", "--cloud", str(cloud_file), "--output", str(out_file)])
+    result = runner.invoke(
+        cli, ["report", "--cloud", str(cloud_file), "--output", str(out_file)]
+    )
     assert result.exit_code == 0
     assert result.output == ""  # nothing on stdout
     assert out_file.exists()
@@ -328,6 +410,7 @@ def test_cli_output_flag_writes_file(runner, cloud_file, tmp_path):
 # ---------------------------------------------------------------------------
 # 16. Missing optional fields handled gracefully (no crash)
 # ---------------------------------------------------------------------------
+
 
 def test_cloud_missing_trend_no_crash(tmp_path):
     data = {"total_cost": 1000.0}
@@ -348,7 +431,9 @@ def test_watchdog_empty_anomalies_no_crash(tmp_path):
 
 
 def test_resilience_csv_parse(tmp_path):
-    csv_content = "scenario_name,total_monthly_resilience_cost,currency\nProduction,1240.00,USD\n"
+    csv_content = (
+        "scenario_name,total_monthly_resilience_cost,currency\nProduction,1240.00,USD\n"
+    )
     f = tmp_path / "resilience.csv"
     f.write_text(csv_content, encoding="utf-8")
     data = parse_resilience(f)
@@ -363,14 +448,22 @@ def test_all_inputs_full_report(runner, tmp_path):
     rf = _write_json(tmp_path, "resilience.json", RESILIENCE_DATA)
     af = _write_json(tmp_path, "ai.json", AI_DATA)
     sf = _write_json(tmp_path, "saas.json", SAAS_DATA)
-    result = runner.invoke(cli, [
-        "report",
-        "--cloud", str(cf),
-        "--watchdog", str(wf),
-        "--resilience", str(rf),
-        "--ai", str(af),
-        "--saas", str(sf),
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "report",
+            "--cloud",
+            str(cf),
+            "--watchdog",
+            str(wf),
+            "--resilience",
+            str(rf),
+            "--ai",
+            str(af),
+            "--saas",
+            str(sf),
+        ],
+    )
     assert result.exit_code == 0
     assert "## Spend Summary" in result.output
     assert "## Anomalies" in result.output

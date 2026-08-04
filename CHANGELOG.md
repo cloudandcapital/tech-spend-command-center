@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0
+
+- Add manifest-controlled aggregation of five CCAC tool results.
+- Emit a versioned, independently validatable CCAC trusted report.
+- Verify hashes, run identity, mode, references, review gates, numeric integrity, and cloud reconciliation.
+- Exclude unresolved opportunity overlap and avoid adding unlike periods/accounting boundaries.
+- Remove invented savings, recommendations, AI anomalies, and forecasts from the legacy report path.
+- Fail closed on malformed legacy numeric values.
+- Add an atomic `demo-pipeline` quickstart that orchestrates all five installed producers.
+- Preserve every included producer's quality status and exact issues in the trusted report.
+- Require exactly one produced artifact from every analytical producer and reject omissions, duplicates, unsupported versions, incompatible currencies, unsafe classifications, and broken lineage.
+- Make opportunity aggregation status-aware and deterministic per explicit overlap group while retaining excluded IDs.
+- Protect cloud reconciliation with matching periods, currencies, and additive classifications.
+
 All notable changes to Tech Spend Command Center are documented here.
 
 ## [0.1.0] — Initial release

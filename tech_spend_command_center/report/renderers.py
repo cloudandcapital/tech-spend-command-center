@@ -33,6 +33,7 @@ def _fmt_delta(delta_pct: Optional[float]) -> str:
 # Markdown renderer
 # ---------------------------------------------------------------------------
 
+
 def render_markdown(report: ReportData) -> str:
     lines = []
     period = report.period_label or "Current Period"
@@ -54,12 +55,9 @@ def render_markdown(report: ReportData) -> str:
             f"| {_fmt_money(row.prior, row.currency)} "
             f"| {_fmt_delta(row.delta_pct)} |"
         )
-    total_prior = report.total_prior_spend
+    lines.append("")
     lines.append(
-        f"| **Total** "
-        f"| **{_fmt_money(report.total_spend, report.currency)}** "
-        f"| **{_fmt_money(total_prior, report.currency)}** "
-        f"| — |"
+        "_No combined total: legacy inputs do not establish comparable periods, cost bases, or accounting boundaries._"
     )
     lines.append("")
 
@@ -69,7 +67,9 @@ def render_markdown(report: ReportData) -> str:
     if report.anomalies:
         for a in report.anomalies:
             icon = _SEVERITY_EMOJI.get(a.severity.lower(), "⚪")
-            lines.append(f"- {icon} **[{a.severity.upper()}]** `{a.service}` — {a.message}")
+            lines.append(
+                f"- {icon} **[{a.severity.upper()}]** `{a.service}` — {a.message}"
+            )
     else:
         lines.append("_No anomalies detected._")
     lines.append("")
@@ -81,7 +81,9 @@ def render_markdown(report: ReportData) -> str:
         for i, opt in enumerate(report.optimization_items, 1):
             savings_note = ""
             if opt.estimated_savings:
-                savings_note = f" _(est. savings: {_fmt_money(opt.estimated_savings)}/mo)_"
+                savings_note = (
+                    f" _(est. savings: {_fmt_money(opt.estimated_savings)}/mo)_"
+                )
             lines.append(f"{i}. **[{opt.scope}]** {opt.description}{savings_note}")
     else:
         lines.append("_No optimization opportunities identified._")
@@ -105,15 +107,8 @@ def render_markdown(report: ReportData) -> str:
     lines.append("")
     forecast = report.forecast_next_month
     lines.append(
-        f"Projected next-month total spend: **{_fmt_money(forecast, report.currency)}**"
+        "_Not calculated: legacy inputs do not provide a supported forecast methodology or sufficient history._"
     )
-    if report.total_spend > 0 and forecast != report.total_spend:
-        delta = forecast - report.total_spend
-        sign = "+" if delta >= 0 else ""
-        lines.append(
-            f"_(vs current {_fmt_money(report.total_spend, report.currency)}, "
-            f"change: {sign}{_fmt_money(delta, report.currency)})_"
-        )
     lines.append("")
 
     # --- Risk Flags ---
@@ -133,6 +128,7 @@ def render_markdown(report: ReportData) -> str:
 # JSON renderer
 # ---------------------------------------------------------------------------
 
+
 def render_json(report: ReportData) -> str:
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -142,6 +138,7 @@ def render_json(report: ReportData) -> str:
             "spend_summary": {
                 "total_spend": report.total_spend,
                 "total_prior_spend": report.total_prior_spend,
+                "total_status": "not_calculated_incompatible_accounting_boundaries",
                 "currency": report.currency,
                 "scopes": [
                     {
@@ -172,11 +169,15 @@ def render_json(report: ReportData) -> str:
                 }
                 for o in report.optimization_items
             ],
-            "resilience_cost": {
-                "total_monthly_resilience_cost": report.resilience_cost,
-                "scenario_name": report.resilience_scenario,
-                "currency": report.currency,
-            } if report.resilience_cost is not None else None,
+            "resilience_cost": (
+                {
+                    "total_monthly_resilience_cost": report.resilience_cost,
+                    "scenario_name": report.resilience_scenario,
+                    "currency": report.currency,
+                }
+                if report.resilience_cost is not None
+                else None
+            ),
             "forecast": {
                 "projected_next_month": report.forecast_next_month,
                 "current_total": report.total_spend,
@@ -258,14 +259,9 @@ def render_html(report: ReportData) -> str:
             f"<td>{_fmt_delta(row.delta_pct)}</td>"
             f"</tr>\n"
         )
-    total_prior = report.total_prior_spend
     spend_rows_html += (
-        f'<tr class="total-row">'
-        f"<td>Total</td>"
-        f"<td>{_fmt_money(report.total_spend, report.currency)}</td>"
-        f"<td>{_fmt_money(total_prior, report.currency)}</td>"
-        f"<td>—</td>"
-        f"</tr>\n"
+        '<tr><td colspan="4"><em>No combined total: legacy inputs do not establish '
+        "comparable periods, cost bases, or accounting boundaries.</em></td></tr>\n"
     )
 
     # --- Anomalies ---
@@ -282,7 +278,11 @@ def render_html(report: ReportData) -> str:
     if report.optimization_items:
         opt_items = "\n".join(
             f"<li><strong>[{o.scope}]</strong> {o.description}"
-            + (f" <em>(est. savings: {_fmt_money(o.estimated_savings)}/mo)</em>" if o.estimated_savings else "")
+            + (
+                f" <em>(est. savings: {_fmt_money(o.estimated_savings)}/mo)</em>"
+                if o.estimated_savings
+                else ""
+            )
             + "</li>"
             for o in report.optimization_items
         )
@@ -301,14 +301,7 @@ def render_html(report: ReportData) -> str:
         resilience_html = "<p><em>No resilience data provided.</em></p>"
 
     # --- Forecast ---
-    forecast = report.forecast_next_month
-    delta = forecast - report.total_spend
-    sign = "+" if delta >= 0 else ""
-    forecast_html = (
-        f'<p class="forecast-value">{_fmt_money(forecast, report.currency)}</p>'
-        f"<p>Current total: {_fmt_money(report.total_spend, report.currency)} "
-        f"&nbsp;|&nbsp; Change: {sign}{_fmt_money(delta, report.currency)}</p>"
-    )
+    forecast_html = "<p><em>Not calculated: legacy inputs do not provide a supported forecast methodology or sufficient history.</em></p>"
 
     # --- Risk flags ---
     if report.risk_flags:
@@ -318,7 +311,9 @@ def render_html(report: ReportData) -> str:
         )
         risk_html = f"<ul>{risk_items}</ul>"
     else:
-        risk_html = f"<p>{_risk_badge(False)} All scopes within normal variance thresholds.</p>"
+        risk_html = (
+            f"<p>{_risk_badge(False)} All scopes within normal variance thresholds.</p>"
+        )
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
