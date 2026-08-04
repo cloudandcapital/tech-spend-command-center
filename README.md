@@ -24,7 +24,7 @@ See the [six-tool roadmap](ROADMAP.md) for the verified v0.2 boundary and the [c
 - Untagged or unattributed spend remains cost, never an opportunity.
 - Potential, nested, and exclusive opportunity overlaps are excluded from headline aggregates until resolved. Rejected, closed, and implemented-pending-verification opportunities are also excluded.
 - Independent and `none_known` opportunities may be aggregated, but remain estimates.
-- A repeated deterministic overlap group is counted at most once; the lexicographically first opportunity ID takes precedence and every remaining ID stays visible in the excluded catalog.
+- A repeated deterministic overlap group is excluded in full because v0.2 has no canonical winner-selection or precedence field. Every candidate remains visible and requires explicit resolution before any estimate can enter an aggregate.
 - Metrics with different periods or accounting boundaries are not forced into one total.
 - AI cost with possible cloud-billing overlap and modeled resilience exposure remain non-additive.
 - Public review steps must be non-mutating and every opportunity remains approval-, rollback-, and verification-gated.
@@ -110,7 +110,7 @@ techspend manifest \
   --output run/manifest.json
 ```
 
-Artifact paths must be inside the manifest directory. The builder checks contract identity, producer identity, run and mode agreement, finite numeric values, unknown-value explanations, evidence and metric references, estimate ranges, review gates, and non-mutating review steps before marking an artifact contract-valid.
+Artifact paths must be inside the manifest directory. The builder checks contract identity, producer identity and exact compatible semantic version, run and mode agreement, finite numeric values, every present currency, unknown-value explanations, non-empty evidence-to-source lineage, estimate ranges, review gates, and non-mutating review steps before marking an artifact contract-valid. Manifest ingestion additionally requires `status=complete`, an empty errors array, ordered timezone-aware RFC3339 start/completion timestamps, exactly one structurally valid `tool_result` artifact per producer, and matching manifest/document producer versions.
 
 Build the trusted report:
 
@@ -122,6 +122,8 @@ techspend trusted-report \
 ```
 
 The aggregator rereads and hashes every artifact. Any later modification fails closed. It also rejects cross-producer ID collisions, incompatible currencies, invalid periods and classifications, broken evidence or metric references, unsupported producer versions, malformed estimates, and non-review-first opportunities. The complete FinOps Lite service breakdown must use matching periods and currencies, remain additive, and reconcile to `metric.cloud.total` within one cent.
+
+Metrics marked `quality_status=invalid` remain in the catalog only for audit. They are excluded from headlines and displayed sections and cannot be aggregation or reconciliation inputs or outputs. If the required cloud total or any cloud service reconciliation component is invalid, trusted-report construction fails closed.
 
 Producer periods can describe different valid accounting windows. The report period is their union for navigation only; it is not a claim that the windows are comparable. The Command Center does not manufacture a unified technology-spend number from unlike periods, scopes, bases, or accounting boundaries.
 

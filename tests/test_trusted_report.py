@@ -141,6 +141,21 @@ def _opportunity(
     }
 
 
+def _finding(finding_id: str, description: str) -> dict:
+    return {
+        "id": finding_id,
+        "finding_type": "other",
+        "title": "Review finding",
+        "description": description,
+        "severity": "medium",
+        "status": "open",
+        "metric_ids": ["metric.cloud.total"],
+        "evidence_ids": ["evidence.finops-lite.test"],
+        "first_observed_at": NOW,
+        "last_observed_at": NOW,
+    }
+
+
 def _write_run(tmp_path: Path, mutate=None) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     paths = {}
@@ -306,22 +321,31 @@ def test_potential_overlap_is_cataloged_but_excluded(tmp_path: Path):
     assert aggregate["excluded_opportunity_ids"] == ["opportunity.saas.test"]
 
 
-def test_duplicate_overlap_group_uses_documented_deterministic_precedence(
-    tmp_path: Path,
-):
+def test_repeated_overlap_group_excludes_every_candidate(tmp_path: Path):
     def mutate(producer, value):
         if producer == "saas-cost-analyzer":
             value["opportunities"] = [
-                _opportunity("opportunity.saas.z", value["producer"]),
-                _opportunity("opportunity.saas.a", value["producer"]),
+                {
+                    **_opportunity("opportunity.saas.z", value["producer"]),
+                    "status": "approved",
+                    "confidence": "high",
+                },
+                {
+                    **_opportunity("opportunity.saas.a", value["producer"]),
+                    "status": "identified",
+                    "confidence": "low",
+                },
             ]
 
     report = build_trusted_report(_write_run(tmp_path, mutate))
     aggregate = report["opportunity_aggregates"][0]
-    assert aggregate["opportunity_ids"] == ["opportunity.saas.a"]
-    assert aggregate["excluded_opportunity_ids"] == ["opportunity.saas.z"]
-    assert aggregate["expected"] == 100
-    assert "lexicographically first" in aggregate["inclusion_rule"]
+    assert aggregate["opportunity_ids"] == []
+    assert aggregate["excluded_opportunity_ids"] == [
+        "opportunity.saas.a",
+        "opportunity.saas.z",
+    ]
+    assert aggregate["expected"] == 0
+    assert "no canonical selection or precedence" in aggregate["inclusion_rule"]
 
 
 def test_mutating_public_review_step_is_rejected(tmp_path: Path):
@@ -368,12 +392,165 @@ def test_mutating_public_review_step_is_rejected(tmp_path: Path):
         build_trusted_report(_write_run(tmp_path, mutate))
 
 
+def test_cloud_command_in_review_step_is_rejected(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            opportunity = _opportunity(
+                "opportunity.saas.review-command", value["producer"]
+            )
+            opportunity["review"]["non_mutating_review_steps"] = [
+                "aws ec2 stop-instances --instance-ids i-123"
+            ]
+            value["opportunities"] = [opportunity]
+
+    with pytest.raises(TrustedReportError, match="mutating public review step"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "aws ec2 terminate-instances --instance-ids i-123",
+        "aws s3 rm s3://example-bucket --recursive",
+        "az vm deallocate --name example",
+        "gcloud compute instances delete example",
+        "kubectl apply -f deployment.yaml",
+        "terraform destroy -auto-approve",
+        "curl -X POST https://api.example.test/change",
+        "http PUT https://api.example.test/change",
+        "DELETE https://api.example.test/resource/1",
+    ],
+)
+def test_mutating_commands_in_public_findings_are_rejected(
+    tmp_path: Path, command: str
+):
+    def mutate(producer, value):
+        if producer == "finops-lite":
+            value["findings"] = [_finding("finding.cloud.command", command)]
+
+    with pytest.raises(TrustedReportError, match="mutating public command"):
+        _write_run(tmp_path, mutate)
+
+
+def test_mutating_command_in_public_opportunity_text_is_rejected(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "saas-cost-analyzer":
+            opportunity = _opportunity("opportunity.saas.command", value["producer"])
+            opportunity["title"] = "Run kubectl scale deployment app --replicas=0"
+            value["opportunities"] = [opportunity]
+
+    with pytest.raises(TrustedReportError, match="mutating public command"):
+        _write_run(tmp_path, mutate)
+
+
+def test_benign_update_and_create_prose_remains_accepted(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "finops-lite":
+            value["findings"] = [
+                _finding(
+                    "finding.cloud.benign",
+                    "Create a review record before deciding whether an update is appropriate.",
+                )
+            ]
+        if producer == "saas-cost-analyzer":
+            opportunity = _opportunity("opportunity.saas.benign", value["producer"])
+            opportunity["title"] = (
+                "Review the proposed update and create an approval record"
+            )
+            opportunity["review"]["non_mutating_review_steps"] = [
+                "Confirm that any future change requires separate approval."
+            ]
+            value["opportunities"] = [opportunity]
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    assert report["status"] == "complete"
+
+
 def test_manifest_requires_exactly_one_of_all_five_producers(tmp_path: Path):
     manifest_path = _write_run(tmp_path)
     manifest = json.loads(manifest_path.read_text())
     manifest["artifacts"] = manifest["artifacts"][:-1]
     manifest_path.write_text(json.dumps(manifest))
     with pytest.raises(TrustedReportError, match="exactly one produced artifact"):
+        build_trusted_report(manifest_path)
+
+
+@pytest.mark.parametrize("status", ["failed", "partial", None])
+def test_trusted_report_requires_complete_manifest_status(
+    tmp_path: Path, status: str | None
+):
+    manifest_path = _write_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text())
+    manifest["status"] = status
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="status must be complete"):
+        build_trusted_report(manifest_path)
+
+
+def test_trusted_report_rejects_manifest_errors(tmp_path: Path):
+    manifest_path = _write_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text())
+    manifest["errors"] = [
+        {"code": "quality.test", "severity": "error", "message": "bad"}
+    ]
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="errors must be an empty array"):
+        build_trusted_report(manifest_path)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("started_at", None),
+        ("completed_at", None),
+        ("started_at", "2026-08-04T12:00:00"),
+        ("completed_at", "not-a-time"),
+    ],
+)
+def test_trusted_report_rejects_missing_naive_or_invalid_manifest_timestamps(
+    tmp_path: Path, field: str, value: str | None
+):
+    manifest_path = _write_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text())
+    if value is None:
+        manifest.pop(field)
+    else:
+        manifest[field] = value
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="timezone-aware RFC3339"):
+        build_trusted_report(manifest_path)
+
+
+def test_trusted_report_rejects_reversed_manifest_timestamps(tmp_path: Path):
+    manifest_path = _write_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text())
+    manifest["started_at"] = "2026-08-04T13:00:00Z"
+    manifest["completed_at"] = "2026-08-04T12:00:00Z"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="cannot be before"):
+        build_trusted_report(manifest_path)
+
+
+def test_manifest_artifact_metadata_is_strict(tmp_path: Path):
+    manifest_path = _write_run(tmp_path / "type")
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][0]["document_type"] = "trusted_report"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="document_type must be tool_result"):
+        build_trusted_report(manifest_path)
+
+    manifest_path = _write_run(tmp_path / "version")
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][0]["producer"]["version"] = "0.2.1"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="versions do not match"):
+        build_trusted_report(manifest_path)
+
+    manifest_path = _write_run(tmp_path / "structure")
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][0].pop("content_sha256")
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(TrustedReportError, match="structurally invalid"):
         build_trusted_report(manifest_path)
 
     manifest_path = _write_run(tmp_path / "duplicate")
@@ -398,6 +575,27 @@ def test_wrong_identity_and_unsupported_version_fail_closed(tmp_path: Path):
 
     with pytest.raises(TrustedReportError, match="not supported"):
         _write_run(tmp_path / "version", unsupported)
+
+
+@pytest.mark.parametrize("version", ["0.2.bad", "0.2.0junk", "0.2.", "0.20.0", "0.3.0"])
+def test_producer_version_requires_complete_compatible_semver(
+    tmp_path: Path, version: str
+):
+    def mutate(producer, value):
+        if producer == "recovery-economics":
+            value["producer"]["version"] = version
+
+    with pytest.raises(TrustedReportError, match="not supported"):
+        _write_run(tmp_path, mutate)
+
+
+def test_malformed_producer_objects_raise_trusted_error(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "recovery-economics":
+            value["producer"] = "not-an-object"
+
+    with pytest.raises(TrustedReportError, match="producer must be an object"):
+        _write_run(tmp_path, mutate)
 
 
 def test_currency_and_cloud_period_mismatches_fail_closed(tmp_path: Path):
@@ -425,6 +623,64 @@ def test_currency_and_cloud_period_mismatches_fail_closed(tmp_path: Path):
         build_trusted_report(_write_run(tmp_path / "period", mismatched_period))
 
 
+def test_every_present_currency_is_validated(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "ai-cost-lens":
+            value["metrics"][0]["unit"] = "requests"
+            value["metrics"][0]["currency"] = "usd"
+
+    with pytest.raises(TrustedReportError, match="three-letter ISO currency"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize("report_id", ["Report.Bad", "bad id", "a" * 161, ""])
+def test_report_id_must_be_canonical(tmp_path: Path, report_id: str):
+    with pytest.raises(TrustedReportError, match="report_id"):
+        build_trusted_report(_write_run(tmp_path), report_id=report_id)
+
+
+def test_generated_at_must_be_timezone_aware(tmp_path: Path):
+    with pytest.raises(TrustedReportError, match="timezone-aware RFC3339"):
+        build_trusted_report(_write_run(tmp_path), generated_at="2026-08-04T12:00:00")
+
+
+def test_invalid_cloud_total_fails_closed(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "finops-lite":
+            value["metrics"][0]["quality_status"] = "invalid"
+
+    with pytest.raises(TrustedReportError, match="cloud.total is invalid"):
+        build_trusted_report(_write_run(tmp_path, mutate))
+
+
+def test_invalid_cloud_service_metric_fails_closed(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "finops-lite":
+            value["metrics"][1]["quality_status"] = "invalid"
+
+    with pytest.raises(TrustedReportError, match="invalid cloud service metric"):
+        build_trusted_report(_write_run(tmp_path, mutate))
+
+
+def test_invalid_proposed_headline_is_catalog_only(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "ai-cost-lens":
+            value["metrics"][0]["quality_status"] = "invalid"
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    assert report["status"] == "complete"
+    assert "metric.ai.total-cost" not in report["display"]["headline_metric_ids"]
+    assert "metric.ai.total-cost" not in report["display"]["section_metric_ids"].get(
+        "ai-cost-lens", []
+    )
+    assert any(
+        metric["id"] == "metric.ai.total-cost" for metric in report["metric_catalog"]
+    )
+    assert any(
+        "audit only" in disclosure for disclosure in report["display"]["disclosures"]
+    )
+
+
 def test_broken_source_and_metric_lineage_fail_closed(tmp_path: Path):
     def broken_source(producer, value):
         if producer == "ai-cost-lens":
@@ -439,6 +695,21 @@ def test_broken_source_and_metric_lineage_fail_closed(tmp_path: Path):
 
     with pytest.raises(TrustedReportError, match="unresolved metric inputs"):
         _write_run(tmp_path / "metric", broken_metric)
+
+
+@pytest.mark.parametrize("source_ids", [[], None])
+def test_evidence_requires_at_least_one_source_reference(
+    tmp_path: Path, source_ids: list[str] | None
+):
+    def mutate(producer, value):
+        if producer == "ai-cost-lens":
+            if source_ids is None:
+                value["evidence"][0].pop("source_ids")
+            else:
+                value["evidence"][0]["source_ids"] = source_ids
+
+    with pytest.raises(TrustedReportError, match="unresolved source references"):
+        _write_run(tmp_path, mutate)
 
 
 def test_cross_producer_evidence_ids_are_rejected(tmp_path: Path):

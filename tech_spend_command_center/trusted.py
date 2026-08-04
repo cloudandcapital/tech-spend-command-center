@@ -23,12 +23,40 @@ ANALYTICAL_PRODUCERS = (
     "saas-cost-analyzer",
 )
 REQUIRED_PRODUCERS = ANALYTICAL_PRODUCERS + ("tech-spend-command-center",)
-MUTATING_COMMAND = re.compile(
-    r"\b(delete|terminate|release|stop-instances|start-instances|resize|update|create|patch|remove|destroy)\b",
+ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$")
+SUPPORTED_VERSION = re.compile(r"0\.2\.(?:0|[1-9][0-9]*)")
+RFC3339_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+)
+COMMAND_MUTATION_PATTERNS = (
+    re.compile(
+        r"\baws\s+(?:[a-z0-9_-]+\s+){0,4}(?:delete(?:-[a-z0-9_-]+)?|terminate(?:-[a-z0-9_-]+)?|stop(?:-[a-z0-9_-]+)?|modify(?:-[a-z0-9_-]+)?|rm)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\baz\s+(?:[a-z0-9_-]+\s+){0,4}(?:delete|update|create|stop|deallocate)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\bgcloud\s+(?:[a-z0-9_-]+\s+){0,5}(?:delete|update|create|start|stop)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\bkubectl\s+(?:--?\S+\s+)*(?:apply|delete|patch|scale|replace)\b", re.I
+    ),
+    re.compile(r"\bterraform\s+(?:apply|destroy)\b", re.I),
+    re.compile(
+        r"\bcurl\b[^\n]*(?:-X|--request)\s*(?:POST|PUT|PATCH|DELETE)\b",
+        re.I,
+    ),
+    re.compile(r"\bhttp(?:ie)?\s+(?:POST|PUT|PATCH|DELETE)\s+https?://\S+", re.I),
+    re.compile(r"\b(?:POST|PUT|PATCH|DELETE)\s+https?://\S+", re.I),
+)
+REVIEW_MUTATION_INSTRUCTION = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:please\s+)?(?:delete|terminate|stop|modify|update|create|apply|remove|destroy|cancel|revoke|resize|scale|replace|deallocate)\b",
     re.I,
 )
-ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$")
-SUPPORTED_VERSION = re.compile(r"^0\.2(?:\.|$)")
 METRIC_BASES = {"observed", "calculated", "allocated", "estimated", "unknown"}
 ADDITIVITY = {"additive", "non_additive", "semi_additive", "ratio"}
 OPPORTUNITY_STATUSES = {
@@ -59,23 +87,23 @@ def _load(path: Path) -> tuple[dict[str, Any], bytes]:
     return value, raw
 
 
-def _timestamp(value: str | None) -> str:
-    try:
-        parsed = (
-            datetime.fromisoformat(value.replace("Z", "+00:00"))
-            if value
-            else datetime.now(timezone.utc)
+def _timestamp(value: str | None, field: str = "generated_at") -> str:
+    if value is None:
+        return (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
         )
-    except ValueError as exc:
-        raise TrustedReportError("generated_at must be RFC3339") from exc
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return (
-        parsed.astimezone(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    if not isinstance(value, str) or not RFC3339_PATTERN.fullmatch(value):
+        raise TrustedReportError(f"{field} must be timezone-aware RFC3339")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise TrustedReportError(f"{field} must be timezone-aware RFC3339") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise TrustedReportError(f"{field} must be timezone-aware RFC3339")
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _ids(items: Any, field: str) -> set[str]:
@@ -87,13 +115,60 @@ def _ids(items: Any, field: str) -> set[str]:
             not isinstance(item, dict)
             or not isinstance(item.get("id"), str)
             or not item["id"]
-            or not ID_PATTERN.fullmatch(item["id"])
+            or not _valid_id(item["id"])
         ):
             raise TrustedReportError(f"{field}[{index}] requires an id")
         values.append(item["id"])
     if len(values) != len(set(values)):
         raise TrustedReportError(f"{field} contains duplicate ids")
     return set(values)
+
+
+def _valid_id(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) <= 160
+        and bool(ID_PATTERN.fullmatch(value))
+    )
+
+
+def _producer(value: Any, field: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise TrustedReportError(f"{field} must be an object")
+    if set(value) - {"name", "version", "commit"}:
+        raise TrustedReportError(f"{field} contains unsupported fields")
+    if not isinstance(value.get("name"), str) or not isinstance(
+        value.get("version"), str
+    ):
+        raise TrustedReportError(f"{field} requires name and version strings")
+    commit = value.get("commit")
+    if commit is not None and (
+        not isinstance(commit, str) or not re.fullmatch(r"[a-f0-9]{7,40}", commit)
+    ):
+        raise TrustedReportError(f"{field}.commit is invalid")
+    return value
+
+
+def _validate_present_currencies(value: Any, field: str) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "currency" and item is not None:
+                _currency(item, f"{field}.currency")
+            else:
+                _validate_present_currencies(item, f"{field}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_present_currencies(item, f"{field}[{index}]")
+
+
+def _contains_mutating_command(value: Any) -> bool:
+    if isinstance(value, str):
+        return any(pattern.search(value) for pattern in COMMAND_MUTATION_PATTERNS)
+    if isinstance(value, dict):
+        return any(_contains_mutating_command(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_mutating_command(item) for item in value)
+    return False
 
 
 def _period(value: Any, field: str) -> tuple[str, str, str]:
@@ -130,12 +205,13 @@ def _validate_result(
         or document.get("document_type") != "tool_result"
     ):
         raise TrustedReportError(f"{producer} artifact is not a {CONTRACT} tool_result")
-    if document.get("producer", {}).get("name") != producer:
+    producer_value = _producer(document.get("producer"), f"{producer}.producer")
+    if producer_value["name"] != producer:
         raise TrustedReportError(
             f"artifact declared as {producer} has a different producer identity"
         )
-    version = document.get("producer", {}).get("version")
-    if not isinstance(version, str) or not SUPPORTED_VERSION.match(version):
+    version = producer_value["version"]
+    if not SUPPORTED_VERSION.fullmatch(version):
         raise TrustedReportError(f"{producer} version is not supported by v0.2")
     if document.get("run_id") != run_id:
         raise TrustedReportError(f"{producer} run_id does not match the manifest")
@@ -143,8 +219,9 @@ def _validate_result(
         raise TrustedReportError(f"{producer} mode does not match the manifest")
     if not isinstance(document.get("generated_at"), str):
         raise TrustedReportError(f"{producer} generated_at is required")
-    _timestamp(document["generated_at"])
+    _timestamp(document["generated_at"], f"{producer}.generated_at")
     _period(document.get("period"), f"{producer}.period")
+    _validate_present_currencies(document, producer)
     if document.get("quality", {}).get("status") not in {"valid", "partial"}:
         raise TrustedReportError(f"{producer} result quality is not usable")
     metric_ids = _ids(document.get("metrics"), f"{producer}.metrics")
@@ -175,7 +252,9 @@ def _validate_result(
     for evidence in document["evidence"]:
         if not evidence.get("description"):
             raise TrustedReportError(f"{evidence['id']} requires a description")
-        if not set(evidence.get("source_ids", [])).issubset(source_ids):
+        if not evidence.get("source_ids") or not set(
+            evidence.get("source_ids", [])
+        ).issubset(source_ids):
             raise TrustedReportError(
                 f"{evidence['id']} has unresolved source references"
             )
@@ -227,8 +306,15 @@ def _validate_result(
             or not set(finding.get("evidence_ids", [])).issubset(evidence_ids)
         ):
             raise TrustedReportError(f"{finding['id']} has unresolved references")
+        if mode == "illustrative" and _contains_mutating_command(finding):
+            raise TrustedReportError(
+                f"{finding['id']} contains a mutating public command"
+            )
     for opportunity in document["opportunities"]:
-        if opportunity.get("producer", {}).get("name") != producer:
+        opportunity_producer = _producer(
+            opportunity.get("producer"), f"{opportunity['id']}.producer"
+        )
+        if opportunity_producer["name"] != producer:
             raise TrustedReportError(
                 f"{opportunity['id']} producer does not match its tool result"
             )
@@ -291,7 +377,7 @@ def _validate_result(
                 f"{opportunity['id']} requires non-mutating review steps"
             )
         if any(
-            MUTATING_COMMAND.search(step)
+            REVIEW_MUTATION_INSTRUCTION.search(step) or _contains_mutating_command(step)
             for step in review.get("non_mutating_review_steps", [])
         ):
             raise TrustedReportError(
@@ -306,6 +392,10 @@ def _validate_result(
             )
         ):
             raise TrustedReportError(f"{opportunity['id']} has unresolved references")
+        if mode == "illustrative" and _contains_mutating_command(opportunity):
+            raise TrustedReportError(
+                f"{opportunity['id']} contains a mutating public command"
+            )
 
 
 def _select_opportunities(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -316,18 +406,25 @@ def _select_opportunities(opportunities: list[dict[str, Any]]) -> list[dict[str,
     aggregates = []
     for (period_name, currency), candidates in sorted(grouped.items()):
         included, excluded = [], []
-        included_groups: set[str] = set()
+        eligible_group_counts: dict[str, int] = defaultdict(int)
+        for item in candidates:
+            disposition = item.get("overlap", {}).get("disposition")
+            group_id = item.get("overlap", {}).get("group_id")
+            if (
+                disposition in {"independent", "none_known"}
+                and item.get("status") in INCLUDED_OPPORTUNITY_STATUSES
+                and group_id
+            ):
+                eligible_group_counts[group_id] += 1
         for item in sorted(candidates, key=lambda row: row["id"]):
             disposition = item.get("overlap", {}).get("disposition")
             group_id = item.get("overlap", {}).get("group_id")
             if (
                 disposition in {"independent", "none_known"}
                 and item.get("status") in INCLUDED_OPPORTUNITY_STATUSES
-                and (not group_id or group_id not in included_groups)
+                and (not group_id or eligible_group_counts[group_id] == 1)
             ):
                 included.append(item)
-                if group_id:
-                    included_groups.add(group_id)
             else:
                 excluded.append(item)
         aggregates.append(
@@ -343,7 +440,7 @@ def _select_opportunities(opportunities: list[dict[str, Any]]) -> list[dict[str,
                 ),
                 "high": round(sum(item["estimate"]["high"] for item in included), 2),
                 "currency": currency,
-                "inclusion_rule": "Include only identified, under-review, or approved opportunities with independent or none-known overlap disposition, at most once per deterministic overlap group; if a group repeats, the lexicographically first opportunity ID takes precedence. Exclude rejected, closed, implemented-pending-verification, potential, nested, exclusive, and remaining duplicate-group entries; estimates are not verified savings.",
+                "inclusion_rule": "Include only identified, under-review, or approved opportunities with independent or none-known overlap disposition whose deterministic overlap group appears exactly once. Exclude every candidate in repeated groups because v0.2 has no canonical selection or precedence mechanism; also exclude rejected, closed, implemented-pending-verification, potential, nested, and exclusive entries. All candidates remain cataloged and estimates are not verified savings.",
             }
         )
     return aggregates
@@ -355,6 +452,8 @@ def build_trusted_report(
     generated_at: str | None = None,
     report_id: str = "report.tech-spend.trusted",
 ) -> dict[str, Any]:
+    if not _valid_id(report_id):
+        raise TrustedReportError("report_id must be a canonical CCAC id")
     manifest, manifest_raw = _load(manifest_path)
     if (
         manifest.get("contract") != CONTRACT
@@ -365,6 +464,22 @@ def build_trusted_report(
         raise TrustedReportError(
             "manifest required_producers must contain the six canonical producers in order"
         )
+    if manifest.get("status") != "complete":
+        raise TrustedReportError("manifest status must be complete")
+    if manifest.get("errors") != []:
+        raise TrustedReportError("manifest errors must be an empty array")
+    if not isinstance(manifest.get("started_at"), str) or not isinstance(
+        manifest.get("completed_at"), str
+    ):
+        raise TrustedReportError(
+            "manifest started_at and completed_at must be timezone-aware RFC3339"
+        )
+    started_at = _timestamp(manifest["started_at"], "manifest.started_at")
+    completed_at = _timestamp(manifest["completed_at"], "manifest.completed_at")
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    if completed < started:
+        raise TrustedReportError("manifest completed_at cannot be before started_at")
     try:
         run_id = str(uuid.UUID(str(manifest.get("run_id"))))
     except (ValueError, TypeError) as exc:
@@ -382,7 +497,26 @@ def build_trusted_report(
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             raise TrustedReportError("manifest artifact must be an object")
-        producer = artifact.get("producer", {}).get("name")
+        allowed_artifact_fields = {
+            "producer",
+            "document_type",
+            "relative_path",
+            "content_sha256",
+            "status",
+            "contract_valid",
+            "omission_reason",
+        }
+        required_artifact_fields = allowed_artifact_fields - {"omission_reason"}
+        if set(
+            artifact
+        ) - allowed_artifact_fields or not required_artifact_fields.issubset(artifact):
+            raise TrustedReportError(
+                "manifest artifact metadata is structurally invalid"
+            )
+        artifact_producer = _producer(
+            artifact.get("producer"), "manifest artifact producer"
+        )
+        producer = artifact_producer["name"]
         if producer not in ANALYTICAL_PRODUCERS:
             raise TrustedReportError(
                 f"unsupported manifest artifact producer: {producer}"
@@ -397,6 +531,15 @@ def build_trusted_report(
             raise TrustedReportError(
                 f"{producer} artifact must be produced and contract-valid"
             )
+        if artifact.get("document_type") != "tool_result":
+            raise TrustedReportError(
+                f"{producer} manifest artifact document_type must be tool_result"
+            )
+        digest_value = artifact.get("content_sha256")
+        if not isinstance(digest_value, str) or not re.fullmatch(
+            r"[a-f0-9]{64}", digest_value
+        ):
+            raise TrustedReportError(f"{producer} artifact content_sha256 is invalid")
         relative = artifact.get("relative_path")
         if (
             not isinstance(relative, str)
@@ -411,9 +554,14 @@ def build_trusted_report(
             )
         document, raw = _load(path)
         digest = hashlib.sha256(raw).hexdigest()
-        if digest != artifact.get("content_sha256"):
+        if digest != digest_value:
             raise TrustedReportError(f"artifact hash mismatch for {producer}")
         _validate_result(document, producer, run_id, mode)
+        document_producer = _producer(document.get("producer"), f"{producer}.producer")
+        if artifact_producer["version"] != document_producer["version"]:
+            raise TrustedReportError(
+                f"{producer} manifest and document producer versions do not match"
+            )
         results[producer] = document
         artifact_hashes[producer] = digest
     if set(results) != set(ANALYTICAL_PRODUCERS) or len(artifacts) != len(
@@ -469,6 +617,9 @@ def build_trusted_report(
         "timezone": "UTC",
     }
     metric_map = {item["id"]: item for item in metrics}
+    valid_metric_map = {
+        item["id"]: item for item in metrics if item.get("quality_status") != "invalid"
+    }
     cloud_total = metric_map.get("metric.cloud.total")
     cloud_services = [
         item
@@ -480,6 +631,12 @@ def build_trusted_report(
     if not cloud_total or not cloud_services:
         raise TrustedReportError(
             "FinOps Lite cloud total and complete service metrics are required for report reconciliation"
+        )
+    if cloud_total.get("quality_status") == "invalid":
+        raise TrustedReportError("metric.cloud.total is invalid and cannot be trusted")
+    if any(item.get("quality_status") == "invalid" for item in cloud_services):
+        raise TrustedReportError(
+            "an invalid cloud service metric cannot be used for reconciliation"
         )
     if cloud_total.get("additivity") != "additive" or any(
         item.get("additivity") != "additive" for item in cloud_services
@@ -515,7 +672,7 @@ def build_trusted_report(
         }
     ]
     section_ids: dict[str, list[str]] = defaultdict(list)
-    for metric in metrics:
+    for metric in valid_metric_map.values():
         producer = next(
             name
             for name, document in results.items()
@@ -525,10 +682,12 @@ def build_trusted_report(
     headline = [
         item
         for item in ("metric.cloud.total", "metric.ai.total-cost")
-        if item in metric_map
+        if item in valid_metric_map
     ]
     headline.extend(
-        item["id"] for item in metrics if item["id"].endswith(".invoice-cost")
+        item["id"]
+        for item in valid_metric_map.values()
+        if item["id"].endswith(".invoice-cost")
     )
     disclosures = [
         "Every displayed number references a canonical producer metric; the Command Center does not invent savings, anomalies, or forecasts.",
@@ -547,6 +706,10 @@ def build_trusted_report(
     ):
         disclosures.append(
             "One or more producer results are partial; inspect their quality issues before decisions."
+        )
+    if len(valid_metric_map) != len(metric_map):
+        disclosures.append(
+            "Invalid producer metrics remain in the catalog for audit only and are excluded from headlines, displayed sections, aggregates, and reconciliation."
         )
     aggregates = _select_opportunities(opportunities)
     producer_quality = [

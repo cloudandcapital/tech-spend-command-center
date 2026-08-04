@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,23 +15,14 @@ from .trusted import (
     CONTRACT,
     REQUIRED_PRODUCERS,
     TrustedReportError,
+    _producer,
+    _timestamp,
     _validate_result,
 )
 
 
 def _time(value: str) -> str:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise TrustedReportError("manifest timestamp must be RFC3339") from exc
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return (
-        parsed.astimezone(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return _timestamp(value, "manifest timestamp")
 
 
 def build_manifest(
@@ -60,11 +51,15 @@ def build_manifest(
             raise TrustedReportError(
                 f"unable to read {producer} artifact: {exc}"
             ) from exc
+        if not isinstance(document, dict):
+            raise TrustedReportError(
+                f"{producer} path does not contain its canonical tool_result"
+            )
+        document_producer = _producer(document.get("producer"), f"{producer}.producer")
         if (
-            not isinstance(document, dict)
-            or document.get("contract") != CONTRACT
+            document.get("contract") != CONTRACT
             or document.get("document_type") != "tool_result"
-            or document.get("producer", {}).get("name") != producer
+            or document_producer["name"] != producer
         ):
             raise TrustedReportError(
                 f"{producer} path does not contain its canonical tool_result"
@@ -84,7 +79,7 @@ def build_manifest(
             mode = artifact_mode
         elif mode != artifact_mode:
             raise TrustedReportError("producer modes do not match")
-        version = str(document.get("producer", {}).get("version") or "")
+        version = document_producer["version"]
         if not version:
             raise TrustedReportError(f"{producer} version is required")
         versions[producer] = version

@@ -13,6 +13,10 @@
 - Require exactly one produced artifact from every analytical producer and reject omissions, duplicates, unsupported versions, incompatible currencies, unsafe classifications, and broken lineage.
 - Make opportunity aggregation status-aware and deterministic per explicit overlap group while retaining excluded IDs.
 - Protect cloud reconciliation with matching periods, currencies, and additive classifications.
+- Validate complete manifest state, timezone-aware timestamps, exact producer semantic versions, artifact structure, non-empty evidence lineage, and canonical report IDs.
+- Exclude invalid metrics from decision-ready display and fail closed when required cloud reconciliation metrics are invalid.
+- Reject executable mutation commands recursively in illustrative findings and opportunities without blocking ordinary explanatory prose.
+- Exclude every candidate in a repeated overlap group until a future canonical precedence mechanism exists.
 
 All notable changes to Tech Spend Command Center are documented here.
 
