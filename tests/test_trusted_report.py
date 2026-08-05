@@ -727,7 +727,7 @@ def test_over_limit_versions_fail_with_controlled_trusted_error(
 
     with pytest.raises(
         TrustedReportError,
-        match="finops-watchdog version is unsupported by Tech Spend Command Center 0.2",
+        match="finops-watchdog version is unsupported by the current Tech Spend Command Center release",
     ):
         _write_run(tmp_path, mutate)
 

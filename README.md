@@ -46,7 +46,7 @@ See the [six-tool roadmap](ROADMAP.md) for the verified v0.2 boundary and the [c
 Python 3.10 or later is required.
 
 ```bash
-pipx install "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+pipx install "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.1"
 techspend --version
 ```
 
@@ -79,9 +79,10 @@ python -m pip install \
   "git+https://github.com/cloudandcapital/recovery-economics.git@v0.2.1" \
   "git+https://github.com/cloudandcapital/ai-cost-lens.git@v0.2.0" \
   "git+https://github.com/cloudandcapital/saas-cost-analyzer.git@v0.2.0" \
-  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.1"
 
 techspend demo-pipeline --output-dir demo-run
+techspend summarize demo-run
 ```
 
 ### Windows PowerShell
@@ -99,9 +100,10 @@ python -m pip install `
   "git+https://github.com/cloudandcapital/recovery-economics.git@v0.2.1" `
   "git+https://github.com/cloudandcapital/ai-cost-lens.git@v0.2.0" `
   "git+https://github.com/cloudandcapital/saas-cost-analyzer.git@v0.2.0" `
-  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.1"
 
 techspend demo-pipeline --output-dir demo-run
+techspend summarize demo-run
 ```
 
 If PowerShell policy blocks activation, do not weaken system-wide security
@@ -114,8 +116,9 @@ settings. Use the environment executables directly:
   "git+https://github.com/cloudandcapital/recovery-economics.git@v0.2.1" `
   "git+https://github.com/cloudandcapital/ai-cost-lens.git@v0.2.0" `
   "git+https://github.com/cloudandcapital/saas-cost-analyzer.git@v0.2.0" `
-  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.1"
 .venv\Scripts\techspend.exe demo-pipeline --output-dir demo-run
+.venv\Scripts\techspend.exe summarize demo-run
 ```
 
 The target directory must not already exist. To rerun the demo, choose a new
@@ -140,10 +143,12 @@ demo-run/
 
 All demo data is explicitly illustrative. The deterministic defaults use a fixed run UUID and timestamp so identical tool versions produce identical artifacts. Override `--run-id` and `--generated-at` only when testing orchestration metadata.
 
-`report.json` is the first file a beginner should read. `manifest.json` locks
-the identities, versions, paths, and hashes of the five producer artifacts.
-The five producer JSON files contain the supporting metrics, evidence,
-findings, assumptions, and domain-specific detail.
+Run `techspend summarize demo-run` first for a read-only human-readable view.
+The command fully validates the run directory before rendering and neither
+changes nor replaces its canonical JSON files. `report.json` remains the
+canonical trusted report, `manifest.json` locks the identities, versions,
+paths, and hashes of the five producer artifacts, and the producer JSON files
+contain supporting metrics, evidence, findings, assumptions, and detail.
 
 ## Read the result
 
@@ -157,13 +162,40 @@ Trusted report: /path/to/cloud-capital-demo/demo-run/report.json
 
 The command prints the resolved absolute paths on the first and third lines.
 
-Pretty-print the report without installing another tool:
+Render the beginner-readable summary:
+
+```bash
+techspend summarize demo-run
+```
+
+The illustrative result begins:
+
+```text
+Cloud & Capital Trusted Report
+Mode: ILLUSTRATIVE
+ILLUSTRATIVE DATA — NO CUSTOMER SYSTEMS OR LIVE CLOUD ACCOUNTS CONNECTED
+Run ID: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+Report period: 2026-01-01 to 2027-01-01 (UTC)
+Contract: ccac/1.0.0
+Command Center: 0.2.1
+
+Verification
+The run's structure, hashes, references, reconciliation, overlap controls, and lineage were validated.
+Included producers: 5
+Cataloged metrics: 155
+Displayed findings: 10
+Cataloged opportunities: 1
+```
+
+To inspect the secondary canonical machine-readable record directly,
+pretty-print it without installing another tool:
 
 ```bash
 python -m json.tool demo-run/report.json
 ```
 
-The same command works in PowerShell. Without environment activation, use
+Both commands work in PowerShell. Without environment activation, use
+`.venv\Scripts\techspend.exe summarize demo-run` for the summary and
 `.venv\Scripts\python.exe -m json.tool demo-run\report.json`.
 
 | Result | Beginner interpretation |

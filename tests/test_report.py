@@ -367,7 +367,7 @@ def test_cli_exits_2_no_inputs(runner):
 def test_cli_version_is_available_to_fresh_users(runner):
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.2.0" in result.output
+    assert "0.2.1" in result.output
 
 
 # ---------------------------------------------------------------------------

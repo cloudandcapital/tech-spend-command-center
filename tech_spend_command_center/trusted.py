@@ -268,7 +268,7 @@ def _validate_result(
     version = producer_value["version"]
     if not _supported_producer_version(producer, version):
         raise TrustedReportError(
-            f"{producer} version is unsupported by Tech Spend Command Center 0.2"
+            f"{producer} version is unsupported by the current Tech Spend Command Center release"
         )
     if document.get("run_id") != run_id:
         raise TrustedReportError(f"{producer} run_id does not match the manifest")

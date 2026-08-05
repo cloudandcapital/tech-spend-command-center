@@ -20,10 +20,10 @@ Release producers before the aggregator so the public quickstart never points at
 
 1. FinOps Lite `0.3.0`
 2. FinOps Watchdog `0.4.0`
-3. Recovery Economics `0.2.0`
+3. Recovery Economics `0.2.1`
 4. AI Cost Lens `0.2.0`
 5. SaaS Cost Analyzer `0.2.0`
-6. Tech Spend Command Center `0.2.0`
+6. Tech Spend Command Center `0.2.1`
 
 For each repository:
 
@@ -74,7 +74,7 @@ After all six default branches contain the release commits:
 
 1. Clone the six repositories into a new directory.
 2. Create one empty Python 3.12 virtual environment.
-3. Install each tool from its approved release tag: FinOps Lite `v0.3.0`, FinOps Watchdog `v0.4.0`, and the other four tools `v0.2.0`.
+3. Install each tool from its approved release tag: FinOps Lite `v0.3.0`, FinOps Watchdog `v0.4.0`, Recovery Economics `v0.2.1`, AI Cost Lens and SaaS Cost Analyzer `v0.2.0`, and Tech Spend Command Center `v0.2.1`.
 4. Run the one-command demo twice into different directories.
 5. Confirm corresponding artifacts are byte-identical.
 6. Independently validate both manifests and reports.
