@@ -2,6 +2,10 @@
 
 ## 0.2.0
 
+- Validate complete stable semantic versions through centralized, explicit
+  per-producer compatibility ranges, including FinOps Watchdog `0.4.x`, while
+  keeping application-version policy independent from `ccac/1.0.0` validation.
+
 - Add manifest-controlled aggregation of five CCAC tool results.
 - Emit a versioned, independently validatable CCAC trusted report.
 - Verify hashes, run identity, mode, references, review gates, numeric integrity, and cloud reconciliation.

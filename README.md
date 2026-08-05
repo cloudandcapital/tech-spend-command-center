@@ -85,12 +85,16 @@ All demo data is explicitly illustrative. The deterministic defaults use a fixed
 | Tool | Compatible release | Canonical role |
 |---|---|---|
 | FinOps Lite | `0.2.x` | Observed cloud-cost producer |
-| FinOps Watchdog | `0.2.x` | Cloud anomaly producer |
+| FinOps Watchdog | `0.4.x` | Cloud anomaly producer |
 | Recovery Economics | `0.2.x` | Modeled resilience producer |
 | AI Cost Lens | `0.2.x` | AI usage-cost producer |
 | SaaS Cost Analyzer | `0.2.x` | SaaS governance producer |
 | Tech Spend Command Center | `0.2.x` | Manifest and trusted-report producer |
 | Shared contract | `ccac/1.0.0` | Versioned data contract |
+
+Producer applications are versioned independently and do not need identical
+package versions. Command Center applies the explicit range shown for each
+producer while validating the shared `ccac/1.0.0` contract separately.
 
 ## Canonical workflow
 

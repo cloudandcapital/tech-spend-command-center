@@ -24,7 +24,16 @@ ANALYTICAL_PRODUCERS = (
 )
 REQUIRED_PRODUCERS = ANALYTICAL_PRODUCERS + ("tech-spend-command-center",)
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$")
-SUPPORTED_VERSION = re.compile(r"0\.2\.(?:0|[1-9][0-9]*)")
+SEMANTIC_VERSION = re.compile(
+    r"(?:0|[1-9][0-9]*)\." r"(?:0|[1-9][0-9]*)\." r"(?:0|[1-9][0-9]*)"
+)
+PRODUCER_VERSION_POLICY = {
+    "finops-lite": ((0, 2, 0), (0, 3, 0)),
+    "finops-watchdog": ((0, 4, 0), (0, 5, 0)),
+    "recovery-economics": ((0, 2, 0), (0, 3, 0)),
+    "ai-cost-lens": ((0, 2, 0), (0, 3, 0)),
+    "saas-cost-analyzer": ((0, 2, 0), (0, 3, 0)),
+}
 RFC3339_PATTERN = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
     r"(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})"
@@ -177,6 +186,18 @@ def _producer(value: Any, field: str) -> dict[str, Any]:
     return value
 
 
+def _supported_producer_version(producer: str, version: str) -> bool:
+    """Return whether a complete, stable semantic version satisfies policy."""
+    if not SEMANTIC_VERSION.fullmatch(version):
+        return False
+    bounds = PRODUCER_VERSION_POLICY.get(producer)
+    if bounds is None:
+        return False
+    parsed = tuple(int(part) for part in version.split("."))
+    minimum, maximum = bounds
+    return minimum <= parsed < maximum
+
+
 def _validate_present_currencies(value: Any, field: str) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
@@ -239,7 +260,7 @@ def _validate_result(
             f"artifact declared as {producer} has a different producer identity"
         )
     version = producer_value["version"]
-    if not SUPPORTED_VERSION.fullmatch(version):
+    if not _supported_producer_version(producer, version):
         raise TrustedReportError(f"{producer} version is not supported by v0.2")
     if document.get("run_id") != run_id:
         raise TrustedReportError(f"{producer} run_id does not match the manifest")

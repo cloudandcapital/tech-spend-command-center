@@ -67,7 +67,10 @@ def _result(producer: str) -> dict:
     return {
         "contract": "ccac/1.0.0",
         "document_type": "tool_result",
-        "producer": {"name": producer, "version": "0.2.0"},
+        "producer": {
+            "name": producer,
+            "version": "0.4.0" if producer == "finops-watchdog" else "0.2.0",
+        },
         "run_id": RUN_ID,
         "generated_at": NOW,
         "mode": "illustrative",
@@ -680,8 +683,20 @@ def test_wrong_identity_and_unsupported_version_fail_closed(tmp_path: Path):
         _write_run(tmp_path / "version", unsupported)
 
 
-@pytest.mark.parametrize("version", ["0.2.bad", "0.2.0junk", "0.2.", "0.20.0", "0.3.0"])
-def test_producer_version_requires_complete_compatible_semver(
+@pytest.mark.parametrize(
+    "version",
+    [
+        "0.2.bad",
+        "0.2.0junk",
+        "0.2.",
+        "00.2.0",
+        "0.2.0-alpha.1",
+        "0.2.0+build.1",
+        "0.20.0",
+        "0.3.0",
+    ],
+)
+def test_producer_version_requires_complete_stable_compatible_semver(
     tmp_path: Path, version: str
 ):
     def mutate(producer, value):
@@ -689,6 +704,88 @@ def test_producer_version_requires_complete_compatible_semver(
             value["producer"]["version"] = version
 
     with pytest.raises(TrustedReportError, match="not supported"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize("version", ["0.4.0", "0.4.1", "0.4.999"])
+def test_watchdog_0_4_versions_are_accepted(tmp_path: Path, version: str):
+    def mutate(producer, value):
+        if producer == "finops-watchdog":
+            value["producer"]["version"] = version
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    watchdog = next(
+        item
+        for item in report["included_producers"]
+        if item["name"] == "finops-watchdog"
+    )
+    assert watchdog["version"] == version
+
+
+@pytest.mark.parametrize(
+    "version", ["0.2.0", "0.2.99", "0.3.0", "0.3.99", "0.5.0", "0.5.1"]
+)
+def test_unsupported_watchdog_versions_fail_closed(tmp_path: Path, version: str):
+    def mutate(producer, value):
+        if producer == "finops-watchdog":
+            value["producer"]["version"] = version
+
+    with pytest.raises(TrustedReportError, match="not supported"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "producer",
+    [
+        "finops-lite",
+        "recovery-economics",
+        "ai-cost-lens",
+        "saas-cost-analyzer",
+    ],
+)
+@pytest.mark.parametrize("version", ["0.2.0", "0.2.1", "0.2.999"])
+def test_other_producer_0_2_versions_are_accepted(
+    tmp_path: Path, producer: str, version: str
+):
+    def mutate(name, value):
+        if name == producer:
+            value["producer"]["version"] = version
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    included = next(
+        item for item in report["included_producers"] if item["name"] == producer
+    )
+    assert included["version"] == version
+
+
+@pytest.mark.parametrize(
+    "producer",
+    [
+        "finops-lite",
+        "recovery-economics",
+        "ai-cost-lens",
+        "saas-cost-analyzer",
+    ],
+)
+@pytest.mark.parametrize("version", ["0.1.99", "0.3.0", "1.2.0"])
+def test_unsupported_versions_for_other_producers_fail_closed(
+    tmp_path: Path, producer: str, version: str
+):
+    def mutate(name, value):
+        if name == producer:
+            value["producer"]["version"] = version
+
+    with pytest.raises(TrustedReportError, match="not supported"):
+        _write_run(tmp_path, mutate)
+
+
+def test_contract_version_is_independent_of_application_version(tmp_path: Path):
+    def mutate(producer, value):
+        if producer == "finops-watchdog":
+            value["producer"]["version"] = "0.4.1"
+            value["contract"] = "ccac/2.0.0"
+
+    with pytest.raises(TrustedReportError, match="canonical tool_result"):
         _write_run(tmp_path, mutate)
 
 
