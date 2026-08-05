@@ -679,7 +679,7 @@ def test_wrong_identity_and_unsupported_version_fail_closed(tmp_path: Path):
         if producer == "recovery-economics":
             value["producer"]["version"] = "0.3.0"
 
-    with pytest.raises(TrustedReportError, match="not supported"):
+    with pytest.raises(TrustedReportError, match="unsupported"):
         _write_run(tmp_path / "version", unsupported)
 
 
@@ -696,14 +696,35 @@ def test_wrong_identity_and_unsupported_version_fail_closed(tmp_path: Path):
         "0.3.0",
     ],
 )
-def test_producer_version_requires_complete_stable_compatible_semver(
+def test_producer_version_requires_canonical_bare_compatible_release(
     tmp_path: Path, version: str
 ):
     def mutate(producer, value):
         if producer == "recovery-economics":
             value["producer"]["version"] = version
 
-    with pytest.raises(TrustedReportError, match="not supported"):
+    with pytest.raises(TrustedReportError, match="unsupported"):
+        _write_run(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        f"0.4.{'9' * 65}",
+        f"{'9' * 22}.{'8' * 22}.{'7' * 22}",
+    ],
+)
+def test_over_limit_versions_fail_with_controlled_trusted_error(
+    tmp_path: Path, version: str
+):
+    def mutate(producer, value):
+        if producer == "finops-watchdog":
+            value["producer"]["version"] = version
+
+    with pytest.raises(
+        TrustedReportError,
+        match="finops-watchdog version is unsupported by Tech Spend Command Center 0.2",
+    ):
         _write_run(tmp_path, mutate)
 
 
@@ -730,7 +751,7 @@ def test_unsupported_watchdog_versions_fail_closed(tmp_path: Path, version: str)
         if producer == "finops-watchdog":
             value["producer"]["version"] = version
 
-    with pytest.raises(TrustedReportError, match="not supported"):
+    with pytest.raises(TrustedReportError, match="unsupported"):
         _write_run(tmp_path, mutate)
 
 
@@ -775,7 +796,7 @@ def test_unsupported_versions_for_other_producers_fail_closed(
         if name == producer:
             value["producer"]["version"] = version
 
-    with pytest.raises(TrustedReportError, match="not supported"):
+    with pytest.raises(TrustedReportError, match="unsupported"):
         _write_run(tmp_path, mutate)
 
 

@@ -24,7 +24,8 @@ ANALYTICAL_PRODUCERS = (
 )
 REQUIRED_PRODUCERS = ANALYTICAL_PRODUCERS + ("tech-spend-command-center",)
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$")
-SEMANTIC_VERSION = re.compile(
+MAX_PRODUCER_VERSION_LENGTH = 64
+BARE_RELEASE_VERSION = re.compile(
     r"(?:0|[1-9][0-9]*)\." r"(?:0|[1-9][0-9]*)\." r"(?:0|[1-9][0-9]*)"
 )
 PRODUCER_VERSION_POLICY = {
@@ -187,13 +188,18 @@ def _producer(value: Any, field: str) -> dict[str, Any]:
 
 
 def _supported_producer_version(producer: str, version: str) -> bool:
-    """Return whether a complete, stable semantic version satisfies policy."""
-    if not SEMANTIC_VERSION.fullmatch(version):
+    """Check a canonical bare MAJOR.MINOR.PATCH release against policy."""
+    if len(version) > MAX_PRODUCER_VERSION_LENGTH or not BARE_RELEASE_VERSION.fullmatch(
+        version
+    ):
         return False
     bounds = PRODUCER_VERSION_POLICY.get(producer)
     if bounds is None:
         return False
-    parsed = tuple(int(part) for part in version.split("."))
+    try:
+        parsed = tuple(int(part) for part in version.split("."))
+    except (ValueError, OverflowError):
+        return False
     minimum, maximum = bounds
     return minimum <= parsed < maximum
 
@@ -261,7 +267,9 @@ def _validate_result(
         )
     version = producer_value["version"]
     if not _supported_producer_version(producer, version):
-        raise TrustedReportError(f"{producer} version is not supported by v0.2")
+        raise TrustedReportError(
+            f"{producer} version is unsupported by Tech Spend Command Center 0.2"
+        )
     if document.get("run_id") != run_id:
         raise TrustedReportError(f"{producer} run_id does not match the manifest")
     if document.get("mode") != mode:
