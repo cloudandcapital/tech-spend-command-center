@@ -1,10 +1,10 @@
 # Six-Tool Release Checklist
 
-This checklist is for maintainers preparing the coordinated `0.2.x` public release. It keeps repository code, package metadata, GitHub presentation, and the cross-repository pipeline aligned.
+This checklist is for maintainers preparing the coordinated public release. It keeps repository code, package metadata, GitHub presentation, and the cross-repository pipeline aligned while allowing each producer to preserve its own release history.
 
 ## Before opening pull requests
 
-- Confirm the working tree diff contains only intentional v0.2 changes.
+- Confirm the working tree diff contains only intentional release changes.
 - Confirm no credentials, private keys, customer exports, local absolute paths, caches, build directories, or editor backup files are tracked.
 - Run each repository’s complete test suite.
 - Build each wheel and source distribution.
@@ -19,7 +19,7 @@ This checklist is for maintainers preparing the coordinated `0.2.x` public relea
 Release producers before the aggregator so the public quickstart never points at unavailable interfaces:
 
 1. FinOps Lite `0.2.0`
-2. FinOps Watchdog `0.2.0`
+2. FinOps Watchdog `0.4.0`
 3. Recovery Economics `0.2.0`
 4. AI Cost Lens `0.2.0`
 5. SaaS Cost Analyzer `0.2.0`
@@ -33,7 +33,7 @@ For each repository:
 4. Push the branch and open a pull request.
 5. Require the Python matrix and package smoke job to pass.
 6. Merge only after review.
-7. Tag the exact merge commit as `v0.2.0` and create release notes from the changelog.
+7. Tag the exact merge commit with that repository's approved application version and create release notes from the changelog.
 8. Re-run the public installation command from the tag before continuing.
 
 ## GitHub “About” descriptions
@@ -74,7 +74,7 @@ After all six default branches contain the release commits:
 
 1. Clone the six repositories into a new directory.
 2. Create one empty Python 3.12 virtual environment.
-3. Install all six from their `v0.2.0` tags.
+3. Install each tool from its approved release tag: FinOps Watchdog `v0.4.0` and the other five tools `v0.2.0`.
 4. Run the one-command demo twice into different directories.
 5. Confirm corresponding artifacts are byte-identical.
 6. Independently validate both manifests and reports.
