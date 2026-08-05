@@ -4,7 +4,7 @@ This checklist is for maintainers preparing the coordinated public release. It k
 
 ## Before opening pull requests
 
-- Confirm the working tree diff contains only intentional v0.2 changes.
+- Confirm the working tree diff contains only intentional release changes.
 - Confirm no credentials, private keys, customer exports, local absolute paths, caches, build directories, or editor backup files are tracked.
 - Run each repository’s complete test suite.
 - Build each wheel and source distribution.
