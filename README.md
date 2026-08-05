@@ -84,7 +84,7 @@ All demo data is explicitly illustrative. The deterministic defaults use a fixed
 
 | Tool | Compatible release | Canonical role |
 |---|---|---|
-| FinOps Lite | `0.2.x` | Observed cloud-cost producer |
+| FinOps Lite | `0.3.x` | Observed cloud-cost producer |
 | FinOps Watchdog | `0.4.x` | Cloud anomaly producer |
 | Recovery Economics | `0.2.x` | Modeled resilience producer |
 | AI Cost Lens | `0.2.x` | AI usage-cost producer |

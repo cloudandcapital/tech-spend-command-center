@@ -29,7 +29,7 @@ BARE_RELEASE_VERSION = re.compile(
     r"(?:0|[1-9][0-9]*)\." r"(?:0|[1-9][0-9]*)\." r"(?:0|[1-9][0-9]*)"
 )
 PRODUCER_VERSION_POLICY = {
-    "finops-lite": ((0, 2, 0), (0, 3, 0)),
+    "finops-lite": ((0, 3, 0), (0, 4, 0)),
     "finops-watchdog": ((0, 4, 0), (0, 5, 0)),
     "recovery-economics": ((0, 2, 0), (0, 3, 0)),
     "ai-cost-lens": ((0, 2, 0), (0, 3, 0)),

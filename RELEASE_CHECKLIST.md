@@ -18,7 +18,7 @@ This checklist is for maintainers preparing the coordinated public release. It k
 
 Release producers before the aggregator so the public quickstart never points at unavailable interfaces:
 
-1. FinOps Lite `0.2.0`
+1. FinOps Lite `0.3.0`
 2. FinOps Watchdog `0.4.0`
 3. Recovery Economics `0.2.0`
 4. AI Cost Lens `0.2.0`
@@ -74,7 +74,7 @@ After all six default branches contain the release commits:
 
 1. Clone the six repositories into a new directory.
 2. Create one empty Python 3.12 virtual environment.
-3. Install each tool from its approved release tag: FinOps Watchdog `v0.4.0` and the other five tools `v0.2.0`.
+3. Install each tool from its approved release tag: FinOps Lite `v0.3.0`, FinOps Watchdog `v0.4.0`, and the other four tools `v0.2.0`.
 4. Run the one-command demo twice into different directories.
 5. Confirm corresponding artifacts are byte-identical.
 6. Independently validate both manifests and reports.

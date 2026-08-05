@@ -69,7 +69,11 @@ def _result(producer: str) -> dict:
         "document_type": "tool_result",
         "producer": {
             "name": producer,
-            "version": "0.4.0" if producer == "finops-watchdog" else "0.2.0",
+            "version": (
+                "0.3.0"
+                if producer == "finops-lite"
+                else "0.4.0" if producer == "finops-watchdog" else "0.2.0"
+            ),
         },
         "run_id": RUN_ID,
         "generated_at": NOW,
@@ -755,10 +759,46 @@ def test_unsupported_watchdog_versions_fail_closed(tmp_path: Path, version: str)
         _write_run(tmp_path, mutate)
 
 
+@pytest.mark.parametrize("version", ["0.3.0", "0.3.1", "0.3.999"])
+def test_finops_lite_0_3_versions_are_accepted(tmp_path: Path, version: str):
+    def mutate(producer, value):
+        if producer == "finops-lite":
+            value["producer"]["version"] = version
+
+    report = build_trusted_report(_write_run(tmp_path, mutate))
+    finops_lite = next(
+        item for item in report["included_producers"] if item["name"] == "finops-lite"
+    )
+    assert finops_lite["version"] == version
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        "0.2.0",
+        "0.2.999",
+        "0.4.0",
+        "0.3.0-alpha.1",
+        "0.3.0+build.1",
+        "00.3.0",
+        "0.3",
+        "0.3.0.1",
+        "0.3.bad",
+        f"0.3.{'9' * 65}",
+    ],
+)
+def test_unsupported_finops_lite_versions_fail_closed(tmp_path: Path, version: str):
+    def mutate(producer, value):
+        if producer == "finops-lite":
+            value["producer"]["version"] = version
+
+    with pytest.raises(TrustedReportError, match="unsupported"):
+        _write_run(tmp_path, mutate)
+
+
 @pytest.mark.parametrize(
     "producer",
     [
-        "finops-lite",
         "recovery-economics",
         "ai-cost-lens",
         "saas-cost-analyzer",
@@ -782,7 +822,6 @@ def test_other_producer_0_2_versions_are_accepted(
 @pytest.mark.parametrize(
     "producer",
     [
-        "finops-lite",
         "recovery-economics",
         "ai-cost-lens",
         "saas-cost-analyzer",
