@@ -2,6 +2,17 @@
 
 The trust and aggregation layer for the Cloud & Capital six-tool pipeline.
 
+## Start here
+
+The six-tool system turns five read-only analytical results—AWS cost,
+cost anomalies, resilience economics, AI usage cost, and SaaS governance—into
+one hash-locked trusted report without combining incompatible accounting
+boundaries. The public demo is credential-free and entirely illustrative: it
+uses no cloud, AI-provider, SaaS, customer, or production credentials or data.
+
+Cloud Cost Guard is not connected. It remains a planned downstream consumer,
+and this demo does not deploy, remediate, or modify any external system.
+
 Version 0.2 consumes exactly one same-run `ccac/1.0.0` tool result from each of the five analytical producers, verifies their identities and hashes, preserves their canonical metrics, findings, opportunities, and evidence references, and emits one independently validatable `trusted_report`. Missing, duplicate, omitted, failed, unsupported, or incorrectly identified producer artifacts fail closed.
 
 ```text
@@ -30,40 +41,89 @@ See the [six-tool roadmap](ROADMAP.md) for the verified v0.2 boundary and the [c
 - Public review steps must be non-mutating and every opportunity remains approval-, rollback-, and verification-gated.
 - Illustrative reports carry an explicit visible disclosure.
 
-## Install
+## Install Command Center only
 
 Python 3.10 or later is required.
 
 ```bash
-pipx install "git+https://github.com/cloudandcapital/tech-spend-command-center.git"
+pipx install "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
 techspend --version
 ```
 
 The installed command is `techspend`. Installing Command Center alone provides its manifest, trusted-report, and legacy commands. The one-command six-tool demo additionally requires the five producer packages shown below.
 
-## One-command illustrative quickstart
+## Five-minute illustrative quickstart
 
-From a directory containing the six repository checkouts, install all six into one environment:
+Prerequisites:
+
+- Git, because installation uses public GitHub release-tag URLs
+- Python 3.10 or newer; releases are tested on Python 3.10, 3.11, and 3.12
+- Internet access during installation
+- No AWS, Azure, Google Cloud, AI-provider, SaaS, customer, or production credentials
+
+The following commands install the six released packages directly from their
+public tags. No repository checkout is required.
+
+### macOS and Linux
 
 ```bash
-python -m venv .venv
+mkdir cloud-capital-demo
+cd cloud-capital-demo
+
+python3 -m venv .venv
 . .venv/bin/activate
+
 python -m pip install \
-  ./finops-lite \
-  ./finops-watchdog \
-  ./recovery-economics \
-  ./ai-cost-lens \
-  ./saas-cost-analyzer \
-  ./tech-spend-command-center
+  "git+https://github.com/cloudandcapital/finops-lite.git@v0.3.0" \
+  "git+https://github.com/cloudandcapital/finops-watchdog.git@v0.4.0" \
+  "git+https://github.com/cloudandcapital/recovery-economics.git@v0.2.1" \
+  "git+https://github.com/cloudandcapital/ai-cost-lens.git@v0.2.0" \
+  "git+https://github.com/cloudandcapital/saas-cost-analyzer.git@v0.2.0" \
+  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+
+techspend demo-pipeline --output-dir demo-run
 ```
 
-Then run the complete credential-free pipeline:
+### Windows PowerShell
 
-```bash
-techspend demo-pipeline --output-dir ./demo-run
+```powershell
+mkdir cloud-capital-demo
+cd cloud-capital-demo
+
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+
+python -m pip install `
+  "git+https://github.com/cloudandcapital/finops-lite.git@v0.3.0" `
+  "git+https://github.com/cloudandcapital/finops-watchdog.git@v0.4.0" `
+  "git+https://github.com/cloudandcapital/recovery-economics.git@v0.2.1" `
+  "git+https://github.com/cloudandcapital/ai-cost-lens.git@v0.2.0" `
+  "git+https://github.com/cloudandcapital/saas-cost-analyzer.git@v0.2.0" `
+  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+
+techspend demo-pipeline --output-dir demo-run
 ```
 
-The target directory must not already exist. The command runs every producer in a temporary sibling directory and publishes `demo-run` only after all five results, the manifest, the cloud reconciliation, and the trusted report pass internal validation. A producer failure, missing executable, timeout, hash mismatch, or trust failure leaves no partial target directory.
+If PowerShell policy blocks activation, do not weaken system-wide security
+settings. Use the environment executables directly:
+
+```powershell
+.venv\Scripts\python.exe -m pip install `
+  "git+https://github.com/cloudandcapital/finops-lite.git@v0.3.0" `
+  "git+https://github.com/cloudandcapital/finops-watchdog.git@v0.4.0" `
+  "git+https://github.com/cloudandcapital/recovery-economics.git@v0.2.1" `
+  "git+https://github.com/cloudandcapital/ai-cost-lens.git@v0.2.0" `
+  "git+https://github.com/cloudandcapital/saas-cost-analyzer.git@v0.2.0" `
+  "git+https://github.com/cloudandcapital/tech-spend-command-center.git@v0.2.0"
+.venv\Scripts\techspend.exe demo-pipeline --output-dir demo-run
+```
+
+The target directory must not already exist. To rerun the demo, choose a new
+name such as `demo-run-2`. The command runs every producer in a temporary
+sibling directory and publishes the target only after all five results, the
+manifest, cloud reconciliation, and trusted report pass internal validation.
+A producer failure, missing executable, timeout, hash mismatch, or trust
+failure leaves no partial target directory.
 
 The result contains:
 
@@ -79,6 +139,59 @@ demo-run/
 ```
 
 All demo data is explicitly illustrative. The deterministic defaults use a fixed run UUID and timestamp so identical tool versions produce identical artifacts. Override `--run-id` and `--generated-at` only when testing orchestration metadata.
+
+`report.json` is the first file a beginner should read. `manifest.json` locks
+the identities, versions, paths, and hashes of the five producer artifacts.
+The five producer JSON files contain the supporting metrics, evidence,
+findings, assumptions, and domain-specific detail.
+
+## Read the result
+
+A successful run prints:
+
+```text
+Demo pipeline complete: /path/to/cloud-capital-demo/demo-run
+Validated 5 producers, 155 metrics, 10 findings, and 1 opportunity.
+Trusted report: /path/to/cloud-capital-demo/demo-run/report.json
+```
+
+The command prints the resolved absolute paths on the first and third lines.
+
+Pretty-print the report without installing another tool:
+
+```bash
+python -m json.tool demo-run/report.json
+```
+
+The same command works in PowerShell. Without environment activation, use
+`.venv\Scripts\python.exe -m json.tool demo-run\report.json`.
+
+| Result | Beginner interpretation |
+|---|---|
+| 5 producers | One result each from FinOps Lite, Watchdog, Recovery Economics, AI Cost Lens, and SaaS Cost Analyzer |
+| 155 metrics | Traceable observations, calculations, and modeled values; they are not one additive total |
+| 10 findings | 2 cloud anomalies, 5 resilience findings, 1 unattributed AI-cost finding, and 2 SaaS evidence-quality findings |
+| 1 opportunity | A low-confidence illustrative CRM-seat review with an estimated annual range of USD 0–4,320 |
+
+The opportunity is not realized or verified savings. It requires human
+review, approval, rollback planning, and later invoice verification.
+
+Begin with this interpretation path:
+
+1. Confirm `mode` is `illustrative`.
+2. Check `included_producers` for all five expected producer versions.
+3. Use `display.headline_metric_ids` as pointers into `metric_catalog`.
+4. Treat `display.finding_ids` as review items, not totals.
+5. Read `opportunity_aggregates` as overlap-safe estimated ranges.
+6. Read every item in `display.disclosures` before interpreting a number.
+7. Use `provenance` to trace the report to its manifest and producer files.
+8. Never add values unless period, currency, basis, additivity, and accounting
+   boundary agree.
+
+A trusted report means the expected same-run artifacts passed identity,
+version, hash, reference, reconciliation, overlap, and lineage checks. It does
+not mean source data is necessarily true, recoverability is proven, estimates
+will be realized, savings are verified, or remediation occurred.
 
 ## Compatibility matrix
 
