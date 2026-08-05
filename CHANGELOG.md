@@ -3,7 +3,7 @@
 ## 0.2.0
 
 - Validate canonical bare MAJOR.MINOR.PATCH release versions through centralized, explicit
-  per-producer compatibility ranges, including FinOps Watchdog `0.4.x`, while
+  per-producer compatibility ranges, including FinOps Lite `0.3.x` and FinOps Watchdog `0.4.x`, while
   keeping application-version policy independent from `ccac/1.0.0` validation.
 
 - Add manifest-controlled aggregation of five CCAC tool results.
