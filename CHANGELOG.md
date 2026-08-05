@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1
+
+- Add `techspend summarize <run-directory>`, a deterministic, read-only,
+  human-readable view that fails closed unless the complete manifest,
+  producer artifact set, and stored trusted report validate as one coherent
+  run.
+- Preserve canonical display selections, declared values, unknowns, periods,
+  currencies, bases, quality, confidence, overlap-safe aggregates, and trust
+  boundaries without creating financial calculations or recommendations.
+- Change no financial calculations, schemas, producer contracts, overlap
+  rules, trust validation, or remediation behavior.
+
 ## 0.2.0
 
 - Validate canonical bare MAJOR.MINOR.PATCH release versions through centralized, explicit

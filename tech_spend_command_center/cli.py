@@ -20,6 +20,7 @@ from .parsers.inputs import (
 )
 from .report.builder import build_report
 from .report.renderers import render_html, render_json, render_markdown
+from .summary import summarize_run
 from .trusted import TrustedReportError, build_trusted_report
 
 EXIT_SUCCESS = 0
@@ -64,6 +65,20 @@ def demo_pipeline(
         click.echo(f"Trusted report: {(output_dir.resolve() / 'report.json')}")
     except TrustedReportError as exc:
         click.echo(f"Demo pipeline failed: {exc}", err=True)
+        ctx.exit(4)
+
+
+@cli.command("summarize")
+@click.argument(
+    "run_directory", type=click.Path(path_type=Path, file_okay=True, dir_okay=True)
+)
+@click.pass_context
+def summarize(ctx: click.Context, run_directory: Path) -> None:
+    """Render a validated pipeline RUN_DIRECTORY as safe plain text."""
+    try:
+        click.echo(summarize_run(run_directory), nl=False, color=False)
+    except TrustedReportError as exc:
+        click.echo(f"Summary validation failed: {exc}", err=True, color=False)
         ctx.exit(4)
 
 
