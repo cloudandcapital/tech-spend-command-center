@@ -2,7 +2,7 @@
 
 ## 0.2.0
 
-- Validate complete stable semantic versions through centralized, explicit
+- Validate canonical bare MAJOR.MINOR.PATCH release versions through centralized, explicit
   per-producer compatibility ranges, including FinOps Watchdog `0.4.x`, while
   keeping application-version policy independent from `ccac/1.0.0` validation.
 
