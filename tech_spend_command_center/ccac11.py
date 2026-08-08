@@ -7,10 +7,12 @@ import json
 import os
 import uuid
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+
+from ccac import validate_document, validate_run_directory
 
 from . import __version__
 from .trusted import (
@@ -82,6 +84,62 @@ def _read(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
     return document, raw
 
 
+def _require_ccac(document: dict[str, Any], label: str) -> None:
+    issues = validate_document(document)
+    if issues:
+        first = issues[0]
+        raise TrustedReportError(
+            f"{label} fails released CCAC 0.2.0 validation: "
+            f"{first.code} at {first.path}: {first.message}"
+        )
+
+
+def _safe_artifact_path(base: Path, relative_value: Any, label: str) -> Path:
+    if not isinstance(relative_value, str):
+        raise TrustedReportError(f"{label} relative_path must be a string")
+    relative = Path(relative_value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise TrustedReportError(f"unsafe relative_path for {label}")
+    path = (base / relative).resolve()
+    if path.parent != base:
+        raise TrustedReportError(
+            f"{label} artifact must be directly inside the run directory"
+        )
+    return path
+
+
+def _require_period(value: Any, field: str) -> None:
+    if not isinstance(value, dict) or set(value) != {"start", "end", "timezone"}:
+        raise TrustedReportError(f"{field} must be an exact half-open UTC period")
+    try:
+        start = date.fromisoformat(value["start"])
+        end = date.fromisoformat(value["end"])
+    except (TypeError, ValueError) as exc:
+        raise TrustedReportError(f"{field} contains invalid dates") from exc
+    if start >= end or value["timezone"] != "UTC":
+        raise TrustedReportError(f"{field} must be a nonempty half-open UTC period")
+
+
+def _require_temporal_fields(document: dict[str, Any], name: str) -> None:
+    _timestamp(document.get("generated_at"), f"{name}.generated_at")
+    _require_period(document.get("period"), f"{name}.period")
+    for index, metric in enumerate(document.get("metrics", [])):
+        _require_period(metric.get("period"), f"{name}.metrics[{index}].period")
+    for index, evidence in enumerate(document.get("evidence", [])):
+        observed_at = evidence.get("observed_at")
+        if observed_at is not None:
+            _timestamp(observed_at, f"{name}.evidence[{index}].observed_at")
+    for index, finding in enumerate(document.get("findings", [])):
+        _timestamp(
+            finding.get("first_observed_at"),
+            f"{name}.findings[{index}].first_observed_at",
+        )
+        _timestamp(
+            finding.get("last_observed_at"),
+            f"{name}.findings[{index}].last_observed_at",
+        )
+
+
 def load_producers(
     paths: dict[str, Path],
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str], str, str]:
@@ -92,6 +150,8 @@ def load_producers(
     run_id = mode = None
     for name in ANALYTICAL_PRODUCERS:
         document, raw = _read(paths[name], f"{name} artifact")
+        _require_ccac(document, f"{name} artifact")
+        _require_temporal_fields(document, name)
         producer = document.get("producer")
         if (
             document.get("contract") != CONTRACT
@@ -121,6 +181,86 @@ def load_producers(
         hashes[name] = hashlib.sha256(raw).hexdigest()
     assert run_id is not None and mode is not None
     return documents, hashes, run_id, mode
+
+
+def load_preliminary_manifest(
+    manifest_path: Path,
+) -> tuple[dict[str, Path], str]:
+    """Validate a producer-only CCAC 1.1 manifest before trusting its paths."""
+    manifest, raw = _read(manifest_path, "preliminary manifest")
+    _require_ccac(manifest, "preliminary manifest")
+    if (
+        manifest.get("contract") != CONTRACT
+        or manifest.get("document_type") != "pipeline_manifest"
+        or manifest.get("status") != "complete"
+        or manifest.get("errors") != []
+        or tuple(manifest.get("required_producers", [])) != REQUIRED_PRODUCERS
+    ):
+        raise TrustedReportError(
+            "preliminary manifest must declare one complete CCAC 1.1 run"
+        )
+    started_at = _timestamp(manifest.get("started_at"), "manifest.started_at")
+    completed_at = _timestamp(manifest.get("completed_at"), "manifest.completed_at")
+    if datetime.fromisoformat(
+        completed_at.replace("Z", "+00:00")
+    ) < datetime.fromisoformat(started_at.replace("Z", "+00:00")):
+        raise TrustedReportError(
+            "preliminary manifest completed_at precedes started_at"
+        )
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or len(artifacts) != len(ANALYTICAL_PRODUCERS):
+        raise TrustedReportError(
+            "preliminary manifest must contain exactly five producer artifacts"
+        )
+    base = manifest_path.resolve().parent
+    paths: dict[str, Path] = {}
+    seen_paths: set[Path] = set()
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            raise TrustedReportError("preliminary manifest artifact must be an object")
+        producer = artifact.get("producer")
+        name = producer.get("name") if isinstance(producer, dict) else None
+        if name not in ANALYTICAL_PRODUCERS or name in paths:
+            raise TrustedReportError(
+                "preliminary manifest requires exactly one artifact per analytical producer"
+            )
+        if (
+            artifact.get("document_type") != "tool_result"
+            or artifact.get("status") != "produced"
+            or artifact.get("contract_valid") is not True
+            or producer.get("version") != VERSIONS[name]
+        ):
+            raise TrustedReportError(
+                f"preliminary manifest metadata is invalid for {name}"
+            )
+        path = _safe_artifact_path(base, artifact.get("relative_path"), name)
+        if path in seen_paths:
+            raise TrustedReportError(
+                "preliminary manifest contains a duplicate artifact path"
+            )
+        seen_paths.add(path)
+        document, artifact_raw = _read(path, f"{name} artifact")
+        digest = hashlib.sha256(artifact_raw).hexdigest()
+        if digest != artifact.get("content_sha256"):
+            raise TrustedReportError(f"artifact hash mismatch for {name}")
+        _require_ccac(document, f"{name} artifact")
+        _require_temporal_fields(document, name)
+        if (
+            document.get("contract") != CONTRACT
+            or document.get("document_type") != "tool_result"
+            or document.get("run_id") != manifest.get("run_id")
+            or document.get("mode") != manifest.get("mode")
+            or document.get("producer") != producer
+        ):
+            raise TrustedReportError(
+                f"manifest and document metadata mismatch for {name}"
+            )
+        paths[name] = path
+    if set(paths) != set(ANALYTICAL_PRODUCERS):
+        raise TrustedReportError(
+            "preliminary manifest producer inventory is incomplete"
+        )
+    return paths, hashlib.sha256(raw).hexdigest()
 
 
 def _unique_catalog(
@@ -318,7 +458,7 @@ def build_report(
         "This report is analysis, not verified savings or automated remediation.",
         "Cloud Cost Guard is not connected, and Lumen is not grounded in this report.",
     ]
-    return {
+    report = {
         "contract": CONTRACT,
         "document_type": "trusted_report",
         "producer": {"name": "tech-spend-command-center", "version": __version__},
@@ -364,6 +504,20 @@ def build_report(
         ],
         "provenance": {"manifest_sha256": manifest_sha256, "artifact_sha256s": hashes},
     }
+    _require_ccac(report, "trusted report")
+    return report
+
+
+def build_report_from_manifest(
+    manifest_path: Path, *, generated_at: str, report_id: str
+) -> dict[str, Any]:
+    paths, preliminary_hash = load_preliminary_manifest(manifest_path)
+    report = build_report(
+        paths, generated_at=generated_at, manifest_sha256=preliminary_hash
+    )
+    report["report_id"] = report_id
+    _require_ccac(report, "trusted report")
+    return report
 
 
 def build_manifest(
@@ -396,6 +550,7 @@ def build_manifest(
         )
     if report_path is not None:
         report, raw = _read(report_path, "trusted report")
+        _require_ccac(report, "trusted report")
         relative = Path(os.path.relpath(report_path.resolve(), base))
         if (
             ".." in relative.parts
@@ -423,7 +578,7 @@ def build_manifest(
         completed.replace("Z", "+00:00")
     ) < datetime.fromisoformat(start.replace("Z", "+00:00")):
         raise TrustedReportError("completed_at cannot be before started_at")
-    return {
+    manifest = {
         "contract": CONTRACT,
         "document_type": "pipeline_manifest",
         "run_id": run_id,
@@ -435,3 +590,69 @@ def build_manifest(
         "artifacts": artifacts,
         "errors": [],
     }
+    _require_ccac(manifest, "pipeline manifest")
+    return manifest
+
+
+def validate_complete_run(
+    run_directory: Path,
+) -> tuple[dict[str, Any], dict[str, Path]]:
+    """Validate all seven files and exact report correspondence."""
+    directory = run_directory.resolve()
+    issues = validate_run_directory(directory)
+    if issues:
+        first = issues[0]
+        raise TrustedReportError(
+            "complete run fails released CCAC 0.2.0 validation: "
+            f"{first.code} at {first.path}: {first.message}"
+        )
+    manifest, _ = _read(directory / "manifest.json", "manifest.json")
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or len(artifacts) != 6:
+        raise TrustedReportError(
+            "complete run manifest must contain exactly six artifacts"
+        )
+    producer_paths: dict[str, Path] = {}
+    report_path: Path | None = None
+    expected_paths = {directory / "manifest.json"}
+    seen_paths: set[Path] = set()
+    for artifact in artifacts:
+        producer = artifact.get("producer", {}).get("name")
+        path = _safe_artifact_path(
+            directory, artifact.get("relative_path"), str(producer)
+        )
+        if path in seen_paths:
+            raise TrustedReportError(
+                "complete run manifest contains a duplicate artifact path"
+            )
+        seen_paths.add(path)
+        expected_paths.add(path)
+        if artifact.get("document_type") == "tool_result":
+            producer_paths[producer] = path
+        elif (
+            producer == "tech-spend-command-center"
+            and artifact.get("document_type") == "trusted_report"
+        ):
+            report_path = path
+    if set(producer_paths) != set(ANALYTICAL_PRODUCERS) or report_path is None:
+        raise TrustedReportError(
+            "complete run inventory must contain five producers and one trusted report"
+        )
+    actual_paths = {path.resolve() for path in directory.rglob("*.json")}
+    if actual_paths != {path.resolve() for path in expected_paths}:
+        raise TrustedReportError(
+            "complete run contains missing or unexpected JSON artifacts"
+        )
+    stored_report, _ = _read(report_path, "report.json")
+    expected_report = build_report(
+        producer_paths,
+        generated_at=stored_report.get("generated_at"),
+        manifest_sha256=stored_report.get("provenance", {}).get("manifest_sha256"),
+    )
+    expected_report["report_id"] = stored_report.get("report_id")
+    _require_ccac(expected_report, "recomputed trusted report")
+    if stored_report != expected_report:
+        raise TrustedReportError(
+            "report.json does not correspond exactly to the validated producers and reconciliation"
+        )
+    return stored_report, producer_paths

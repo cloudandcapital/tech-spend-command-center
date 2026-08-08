@@ -6,6 +6,9 @@
   direct-AI, and SaaS scope spend into one exact Technology Spend total.
 - Preserve CCAC 1.0 as the default and keep Watchdog and Recovery Economics
   diagnostic-only.
+- Require the hash-pinned released CCAC 0.2.0 validator at runtime and fail
+  closed on malformed producer documents, manifests, hashes, lineage, reports,
+  or complete-run inventory before publication.
 
 ## 0.2.1
 

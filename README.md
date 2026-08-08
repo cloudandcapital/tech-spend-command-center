@@ -17,6 +17,11 @@ not connected, Lumen is not grounded in this report, and real cloud, AI-vendor,
 and SaaS ingestion remains later work. Output is analysis, not verified savings
 or automated remediation.
 
+The CCAC 1.1 trust path uses the hash-pinned released
+`cloudandcapital-ccac 0.2.0` validator at runtime. It validates complete producer
+documents and manifests before trusting declared paths or hashes, and validates
+the complete seven-file run before atomic publication or summarization.
+
 ## Start here
 
 The six-tool system turns five read-only analytical results—AWS cost,

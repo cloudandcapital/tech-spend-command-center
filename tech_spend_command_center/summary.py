@@ -53,23 +53,9 @@ def validate_run_directory(run_directory: Path) -> ValidatedRun:
     generated_at = stored_report.get("generated_at")
     report_id = stored_report.get("report_id")
     if manifest.get("contract") == "ccac/1.1.0":
-        from .ccac11 import build_report
+        from .ccac11 import validate_complete_run
 
-        producer_artifacts = [
-            item
-            for item in manifest.get("artifacts", [])
-            if item.get("document_type") == "tool_result"
-        ]
-        paths = {
-            item["producer"]["name"]: directory / item["relative_path"]
-            for item in producer_artifacts
-        }
-        rebuilt_report = build_report(
-            paths,
-            generated_at=generated_at,
-            manifest_sha256=stored_report.get("provenance", {}).get("manifest_sha256"),
-        )
-        rebuilt_report["report_id"] = report_id
+        rebuilt_report, validated_paths = validate_complete_run(directory)
     else:
         rebuilt_report = build_trusted_report(
             manifest_path, generated_at=generated_at, report_id=report_id
@@ -100,6 +86,8 @@ def validate_run_directory(run_directory: Path) -> ValidatedRun:
         finding_producers.update(
             {item["id"]: producer for item in document["findings"]}
         )
+    if manifest.get("contract") == "ccac/1.1.0" and artifact_paths != validated_paths:
+        raise TrustedReportError("validated run producer path inventory changed")
 
     actual_json_paths = {path.resolve() for path in directory.rglob("*.json")}
     if actual_json_paths != expected_json_paths:

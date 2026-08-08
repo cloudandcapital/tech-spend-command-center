@@ -181,13 +181,12 @@ def run_demo_pipeline(
         report_path = staging / "report.json"
         if contract_version == "1.1.0":
             from .ccac11 import build_manifest as build_manifest_1_1
-            from .ccac11 import build_report
+            from .ccac11 import build_report_from_manifest, validate_complete_run
 
-            preliminary_hash = (
-                __import__("hashlib").sha256(manifest_path.read_bytes()).hexdigest()
-            )
-            report = build_report(
-                paths, generated_at=generated_at, manifest_sha256=preliminary_hash
+            report = build_report_from_manifest(
+                manifest_path,
+                generated_at=generated_at,
+                report_id="report.tech-spend.trusted",
             )
         else:
             report = build_trusted_report(manifest_path, generated_at=generated_at)
@@ -203,5 +202,6 @@ def run_demo_pipeline(
             manifest_path.write_text(
                 json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
             )
+            validate_complete_run(staging)
         staging.rename(target)
     return report

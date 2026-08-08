@@ -200,6 +200,10 @@ def manifest(
             + "\n"
         )
         output_path.write_text(content, encoding="utf-8")
+        if contract_version == "1.1.0" and report_path is not None:
+            from .ccac11 import validate_complete_run
+
+            validate_complete_run(output_path.parent)
     except TrustedReportError as exc:
         click.echo(f"Manifest validation failed: {exc}", err=True)
         ctx.exit(4)
@@ -243,22 +247,13 @@ def trusted_report(
     """Validate five canonical producer artifacts and emit one trusted_report."""
     try:
         if contract_version == "1.1.0":
-            import hashlib
+            from .ccac11 import build_report_from_manifest
 
-            from .ccac11 import build_report
-
-            preliminary = json.loads(manifest_path.read_bytes())
-            paths = {
-                item["producer"]["name"]: manifest_path.parent / item["relative_path"]
-                for item in preliminary.get("artifacts", [])
-                if item.get("document_type") == "tool_result"
-            }
-            value = build_report(
-                paths,
+            value = build_report_from_manifest(
+                manifest_path,
                 generated_at=generated_at,
-                manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+                report_id=report_id,
             )
-            value["report_id"] = report_id
         else:
             value = build_trusted_report(
                 manifest_path, generated_at=generated_at, report_id=report_id
