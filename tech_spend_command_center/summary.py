@@ -52,9 +52,28 @@ def validate_run_directory(run_directory: Path) -> ValidatedRun:
 
     generated_at = stored_report.get("generated_at")
     report_id = stored_report.get("report_id")
-    rebuilt_report = build_trusted_report(
-        manifest_path, generated_at=generated_at, report_id=report_id
-    )
+    if manifest.get("contract") == "ccac/1.1.0":
+        from .ccac11 import build_report
+
+        producer_artifacts = [
+            item
+            for item in manifest.get("artifacts", [])
+            if item.get("document_type") == "tool_result"
+        ]
+        paths = {
+            item["producer"]["name"]: directory / item["relative_path"]
+            for item in producer_artifacts
+        }
+        rebuilt_report = build_report(
+            paths,
+            generated_at=generated_at,
+            manifest_sha256=stored_report.get("provenance", {}).get("manifest_sha256"),
+        )
+        rebuilt_report["report_id"] = report_id
+    else:
+        rebuilt_report = build_trusted_report(
+            manifest_path, generated_at=generated_at, report_id=report_id
+        )
     if stored_report != rebuilt_report:
         raise TrustedReportError(
             "report.json does not correspond exactly to the validated manifest and producer artifacts"
@@ -68,6 +87,12 @@ def validate_run_directory(run_directory: Path) -> ValidatedRun:
     for artifact in artifacts:
         producer = artifact["producer"]["name"]
         path = (directory / artifact["relative_path"]).resolve()
+        raw = path.read_bytes()
+        if __import__("hashlib").sha256(raw).hexdigest() != artifact["content_sha256"]:
+            raise TrustedReportError(f"artifact hash mismatch for {producer}")
+        if artifact["document_type"] == "trusted_report":
+            expected_json_paths.add(path)
+            continue
         artifact_paths[producer] = path
         expected_json_paths.add(path)
         document = _read_object(path, f"{producer} artifact")
@@ -141,6 +166,41 @@ def _metric_value(metric: dict[str, Any]) -> str:
 def render_summary(validated: ValidatedRun) -> str:
     """Render deterministic plain text from canonical display selections only."""
     report = validated.report
+    if report["contract"] == "ccac/1.1.0":
+        metric_map = {item["id"]: item for item in report["metric_catalog"]}
+        total = metric_map["metric.tech-spend.total"]
+        cloud = metric_map["metric.tech-spend.scope.cloud"]
+        direct_ai = metric_map["metric.tech-spend.scope.direct_ai"]
+        saas = metric_map["metric.tech-spend.scope.saas"]
+        return "\n".join(
+            [
+                "Cloud & Capital Trusted Report",
+                f"Mode: {report['mode'].upper()}",
+                (
+                    "ILLUSTRATIVE DATA — NO CUSTOMER SYSTEMS OR LIVE ACCOUNTS CONNECTED"
+                    if report["mode"] == "illustrative"
+                    else "DECLARED PRODUCER DATA"
+                ),
+                f"Reporting period: {_period(report['period'])}",
+                f"Contract: {report['contract']}",
+                f"Command Center: {report['producer']['version']}",
+                "",
+                f"Technology Spend: ${total['value']:,.2f}",
+                f"Cloud: ${cloud['value']:,.2f}",
+                f"Direct AI: ${direct_ai['value']:,.2f}",
+                f"SaaS: ${saas['value']:,.2f}",
+                "Displayed currency is rounded for readability; canonical JSON retains exact values and reconciliation.",
+                "",
+                f"Findings for review: {len(report['finding_catalog'])}",
+                f"Opportunities for review: {len(report['opportunity_catalog'])}",
+                "Recovery Economics is modeled exposure, not billing or additional spend.",
+                "This report is analysis, not verified savings or automated remediation.",
+                "Cloud Cost Guard is not connected. Lumen is not grounded in this report.",
+                "",
+                "The seven JSON files are the canonical machine-readable records.",
+                "",
+            ]
+        )
     lines = [
         "Cloud & Capital Trusted Report",
         f"Mode: {report['mode'].upper()}",

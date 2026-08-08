@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — unreleased
+
+- Add explicit CCAC 1.1 illustrative reconciliation of canonical Cloud,
+  direct-AI, and SaaS scope spend into one exact Technology Spend total.
+- Preserve CCAC 1.0 as the default and keep Watchdog and Recovery Economics
+  diagnostic-only.
+
 ## 0.2.1
 
 - Add `techspend summarize <run-directory>`, a deterministic, read-only,
