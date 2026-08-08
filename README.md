@@ -2,6 +2,26 @@
 
 The trust and aggregation layer for the Cloud & Capital six-tool pipeline.
 
+CCAC 1.0 remains supported and is the default. Version 0.3.0 adds explicit
+`--contract-version 1.1.0` support for the deterministic illustrative pipeline.
+That report reconciles only canonical Cloud, direct-AI, and SaaS scope spend;
+FinOps Watchdog and Recovery Economics remain diagnostic and add no spend.
+
+```bash
+techspend demo-pipeline --contract-version 1.1.0 --output-dir ccac-1.1-run
+techspend summarize ccac-1.1-run
+```
+
+The demo connects to no customer systems or live accounts. Cloud Cost Guard is
+not connected, Lumen is not grounded in this report, and real cloud, AI-vendor,
+and SaaS ingestion remains later work. Output is analysis, not verified savings
+or automated remediation.
+
+The CCAC 1.1 trust path uses the hash-pinned released
+`cloudandcapital-ccac 0.2.0` validator at runtime. It validates complete producer
+documents and manifests before trusting declared paths or hashes, and validates
+the complete seven-file run before atomic publication or summarization.
+
 ## Start here
 
 The six-tool system turns five read-only analytical results—AWS cost,

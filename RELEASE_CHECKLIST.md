@@ -2,6 +2,15 @@
 
 This checklist is for maintainers preparing the coordinated public release. It keeps repository code, package metadata, GitHub presentation, and the cross-repository pipeline aligned while allowing each producer to preserve its own release history.
 
+## 0.3.0 compatibility
+
+- CCAC contracts: 1.0.0 (default) and 1.1.0 (explicit).
+- CCAC 1.1 producers: FinOps Lite 0.4.0, FinOps Watchdog 0.5.0,
+  Recovery Economics 0.3.0, AI Cost Lens 0.3.0, SaaS Cost Analyzer 0.3.0.
+- The illustrative total is Cloud + direct AI + SaaS. Diagnostic metrics are
+  never inputs. No verified-savings, remediation, connection, or FOCUS
+  conformance claim is introduced.
+
 ## Before opening pull requests
 
 - Confirm the working tree diff contains only intentional release changes.

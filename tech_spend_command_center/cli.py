@@ -50,13 +50,28 @@ def cli() -> None:
 )
 @click.option("--run-id", default=DEMO_RUN_ID, show_default=True)
 @click.option("--generated-at", default=DEMO_GENERATED_AT, show_default=True)
+@click.option(
+    "--contract-version",
+    type=click.Choice(["1.0.0", "1.1.0"]),
+    default="1.0.0",
+    show_default=True,
+)
 @click.pass_context
 def demo_pipeline(
-    ctx: click.Context, output_dir: Path, run_id: str, generated_at: str
+    ctx: click.Context,
+    output_dir: Path,
+    run_id: str,
+    generated_at: str,
+    contract_version: str,
 ) -> None:
     """Run all five installed illustrative producers and build report.json atomically."""
     try:
-        report = run_demo_pipeline(output_dir, run_id=run_id, generated_at=generated_at)
+        report = run_demo_pipeline(
+            output_dir,
+            run_id=run_id,
+            generated_at=generated_at,
+            contract_version=contract_version,
+        )
         opportunity_count = len(report["opportunity_catalog"])
         click.echo(f"Demo pipeline complete: {output_dir.resolve()}")
         click.echo(
@@ -115,6 +130,12 @@ def summarize(ctx: click.Context, run_directory: Path) -> None:
 )
 @click.option("--started-at", required=True, help="RFC3339 pipeline start timestamp.")
 @click.option(
+    "--contract-version",
+    type=click.Choice(["1.0.0", "1.1.0"]),
+    default="1.0.0",
+    show_default=True,
+)
+@click.option(
     "--completed-at", required=True, help="RFC3339 pipeline completion timestamp."
 )
 @click.option(
@@ -122,6 +143,13 @@ def summarize(ctx: click.Context, run_directory: Path) -> None:
     "output_path",
     type=click.Path(path_type=Path, dir_okay=False),
     required=True,
+)
+@click.option(
+    "--report",
+    "report_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=None,
+    help="CCAC 1.1 trusted report to include in the final manifest.",
 )
 @click.pass_context
 def manifest(
@@ -134,6 +162,8 @@ def manifest(
     started_at: str,
     completed_at: str,
     output_path: Path,
+    contract_version: str,
+    report_path: Path | None,
 ) -> None:
     """Hash five same-run tool results and write a pipeline manifest."""
     try:
@@ -144,19 +174,36 @@ def manifest(
             "ai-cost-lens": ai_cost_lens,
             "saas-cost-analyzer": saas_cost_analyzer,
         }
+        if contract_version == "1.1.0" and report_path is not None:
+            from .ccac11 import build_manifest as build_manifest_1_1
+
+            value = build_manifest_1_1(
+                paths,
+                manifest_path=output_path,
+                started_at=started_at,
+                completed_at=completed_at,
+                report_path=report_path,
+            )
+        else:
+            value = build_manifest(
+                paths,
+                manifest_path=output_path,
+                started_at=started_at,
+                completed_at=completed_at,
+                contract_version=contract_version,
+            )
         content = (
             json.dumps(
-                build_manifest(
-                    paths,
-                    manifest_path=output_path,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                ),
+                value,
                 indent=2,
             )
             + "\n"
         )
         output_path.write_text(content, encoding="utf-8")
+        if contract_version == "1.1.0" and report_path is not None:
+            from .ccac11 import validate_complete_run
+
+            validate_complete_run(output_path.parent)
     except TrustedReportError as exc:
         click.echo(f"Manifest validation failed: {exc}", err=True)
         ctx.exit(4)
@@ -174,6 +221,12 @@ def manifest(
     help="CCAC 1.0 pipeline manifest whose paths are resolved relative to the manifest.",
 )
 @click.option("--generated-at", default=None, help="Optional RFC3339 report timestamp.")
+@click.option(
+    "--contract-version",
+    type=click.Choice(["1.0.0", "1.1.0"]),
+    default="1.0.0",
+    show_default=True,
+)
 @click.option("--report-id", default="report.tech-spend.trusted", show_default=True)
 @click.option(
     "--output",
@@ -189,14 +242,25 @@ def trusted_report(
     generated_at: str | None,
     report_id: str,
     output_path: Path | None,
+    contract_version: str,
 ) -> None:
     """Validate five canonical producer artifacts and emit one trusted_report."""
     try:
+        if contract_version == "1.1.0":
+            from .ccac11 import build_report_from_manifest
+
+            value = build_report_from_manifest(
+                manifest_path,
+                generated_at=generated_at,
+                report_id=report_id,
+            )
+        else:
+            value = build_trusted_report(
+                manifest_path, generated_at=generated_at, report_id=report_id
+            )
         content = (
             json.dumps(
-                build_trusted_report(
-                    manifest_path, generated_at=generated_at, report_id=report_id
-                ),
+                value,
                 indent=2,
             )
             + "\n"

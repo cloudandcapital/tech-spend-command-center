@@ -26,8 +26,26 @@ def _time(value: str) -> str:
 
 
 def build_manifest(
-    paths: dict[str, Path], *, manifest_path: Path, started_at: str, completed_at: str
+    paths: dict[str, Path],
+    *,
+    manifest_path: Path,
+    started_at: str,
+    completed_at: str,
+    contract_version: str = "1.0.0",
 ) -> dict[str, Any]:
+    if contract_version == "1.1.0":
+        from .ccac11 import build_manifest as build_manifest_1_1
+
+        return build_manifest_1_1(
+            paths,
+            manifest_path=manifest_path,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+    if contract_version != "1.0.0":
+        raise TrustedReportError(
+            f"unsupported CCAC contract version: {contract_version}"
+        )
     if set(paths) != set(ANALYTICAL_PRODUCERS):
         raise TrustedReportError("exactly five canonical producer paths are required")
     artifacts = []

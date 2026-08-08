@@ -2,6 +2,13 @@
 
 This roadmap separates working capabilities from planned ones. It is not a promise of dates. A feature moves into the supported column only after its inputs, calculations, output contract, documentation, tests, clean installation, and cross-repository behavior are verified.
 
+## Current: CCAC 1.1 reconciliation
+
+The Command Center supports an explicit illustrative CCAC 1.1 run whose
+Technology Spend total contains Cloud, direct AI, and SaaS only. CCAC 1.0 stays
+the default. Cloud Cost Guard, ingestion, dashboard work, and Lumen grounding
+remain later phases.
+
 ## Operational in v0.2
 
 | Capability | Current implementation |
