@@ -1,0 +1,8 @@
+Date,Service,Cost,Currency,Provider,RecordId,EndDate
+2026-09-01,Shop compute,720.125,USD,AWS,c1,2026-10-01
+2026-09-01,Managed database,340,USD,AWS,d1,2026-10-01
+2026-09-01,Object storage,86.75,USD,AWS,s1,2026-10-01
+2026-09-01,Data transfer,135,USD,AWS,n1,2026-10-01
+2026-09-01,Support,49,USD,AWS,u1,2026-10-01
+2026-09-30,Tax,31.5,USD,AWS,t1,2026-10-01
+2026-09-01,Promotional credit,-52.25,USD,AWS,k1,2026-10-01
