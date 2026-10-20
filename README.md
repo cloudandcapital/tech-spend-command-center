@@ -357,3 +357,7 @@ The hostile suite covers hash tampering, mixed run IDs, verified-value misuse, d
 - Real mode requires producer inputs to declare `local_read_only` access and `customer_confidential` classification. No upload, network collection, credential discovery, remediation, or deployment is performed.
 
 MIT licensed. Public examples must remain clearly illustrative.
+
+### Supplied cloud bills (draft)
+
+The [partial billing report adapter](docs/billing-partial.md) runs FinOps Lite → Watchdog → released CCAC validation → Command Center for Guard uploads. Missing domains remain omitted; the existing complete-report path still requires all five producers. Install the `billing` extra for the pinned integration.

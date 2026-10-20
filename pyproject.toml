@@ -27,6 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+billing = [
+    "finops-watchdog[billing] @ git+https://github.com/cloudandcapital/finops-watchdog.git@02b533e8dc52c9d97a3a623aca23f2eeb5415607",
+]
 dev = [
     "black>=26,<27",
     "flake8>=7,<8",

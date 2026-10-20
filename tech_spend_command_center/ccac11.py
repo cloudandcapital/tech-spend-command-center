@@ -269,6 +269,7 @@ def _unique_catalog(
     result = [
         deepcopy(item)
         for name in ANALYTICAL_PRODUCERS
+        if name in documents
         for item in documents[name][field]
     ]
     ids = [item.get("id") for item in result if isinstance(item, dict)]
