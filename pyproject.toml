@@ -31,11 +31,11 @@ billing = [
     "finops-watchdog[billing] @ git+https://github.com/cloudandcapital/finops-watchdog.git@02b533e8dc52c9d97a3a623aca23f2eeb5415607",
 ]
 dev = [
-    "black>=26,<27",
+    "black>=26.10.1,<27",
     "flake8>=7,<8",
     "isort>=6,<7",
-    "pip-audit>=2.10,<3",
-    "pytest>=8,<9",
+    "pip-audit>=2.10,<3; python_version >= '3.11'",
+    "pytest>=9.0.3,<10",
 ]
 
 [project.scripts]

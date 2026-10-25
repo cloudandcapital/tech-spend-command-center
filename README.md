@@ -361,3 +361,8 @@ MIT licensed. Public examples must remain clearly illustrative.
 ### Supplied cloud bills (draft)
 
 The [partial billing report adapter](docs/billing-partial.md) runs FinOps Lite → Watchdog → released CCAC validation → Command Center for Guard uploads. Missing domains remain omitted; the existing complete-report path still requires all five producers. Install the `billing` extra for the pinned integration.
+
+
+### Development Python versions
+
+The tool and its tests support Python 3.10 and newer. Run dependency auditing with Python 3.11 or newer; the audit tooling is included in the development extra on those versions.
